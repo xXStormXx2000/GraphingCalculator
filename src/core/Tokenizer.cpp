@@ -8,12 +8,12 @@ namespace calc::core {
 namespace {
 
 // Returns true if `c` can appear inside an identifier (after the first char).
-constexpr bool isIdentTail(unsigned char c) {
+bool isIdentTail(unsigned char c) {
     return std::isalnum(c) || c == '_';
 }
 
 // Returns true if `c` can start an identifier.
-constexpr bool isIdentHead(unsigned char c) {
+bool isIdentHead(unsigned char c) {
     return std::isalpha(c) || c == '_';
 }
 
