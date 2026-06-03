@@ -349,17 +349,19 @@ Result<AstPtr> simplifyImpl(const AstPtr& node) {
                               double lv, rv;
                               const bool lConst = isNumber(*lhs, lv);
                               const bool rConst = isNumber(*rhs, rv);
+                              
+                              if (lConst && rConst) {
+                                  double num = std::pow(lv, rv);
+                                  if (!std::isfinite(num)) return Diagnostic{ DiagCode::NotFinite, node->span };
+                                  return makeNumber(num, node->span);
+                              }
+
                               // Identity rules.
-                              if (lConst && lv == 0.0 && rConst && rv == 0.0) return Diagnostic{DiagCode::NotFinite, node->span};
                               if (rConst && rv == 0.0) return makeNumber(1.0, node->span);  // x^0 = 1
                               if (rConst && rv == 1.0) return lhs;                           // x^1 = x
                               if (lConst && lv == 0.0) return makeNumber(0.0, node->span);   // 0^x = 0
                               if (lConst && lv == 1.0) return makeNumber(1.0, node->span);   // 1^x = 1
-                              if (lConst && rConst) {
-                                  double num = std::pow(lv, rv);
-                                  if(!std::isfinite(num)) return Diagnostic{DiagCode::NotFinite, node->span};
-                                  return makeNumber(num, node->span);
-                              }
+
                               // (a^m)^n -> a^(m*n) when both m and n are integer literals.
                               // We restrict to integer exponents because the general identity
                               // (a^m)^n = a^(m*n) doesn't hold for negative bases with
