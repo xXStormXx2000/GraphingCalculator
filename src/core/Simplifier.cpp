@@ -350,6 +350,7 @@ Result<AstPtr> simplifyImpl(const AstPtr& node) {
                               const bool lConst = isNumber(*lhs, lv);
                               const bool rConst = isNumber(*rhs, rv);
                               // Identity rules.
+                              if (lConst && lv == 0.0 && rConst && rv == 0.0) return Diagnostic{DiagCode::NotFinite, node->span};
                               if (rConst && rv == 0.0) return makeNumber(1.0, node->span);  // x^0 = 1
                               if (rConst && rv == 1.0) return lhs;                           // x^1 = x
                               if (lConst && lv == 0.0) return makeNumber(0.0, node->span);   // 0^x = 0
