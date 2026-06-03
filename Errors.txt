@@ -1,0 +1,42 @@
+# Diagnostic message templates, keyed by DiagCode integer value.
+# "{}" is replaced by the diagnostic's detail payload.
+# See DiagCode.h for the code -> integer mapping.
+
+# Tokenizer
+1000 = malformed number literal
+1001 = unexpected character '{}'
+
+# Parser
+2000 = empty input
+2001 = unexpected token after expression
+2002 = unexpected token
+2003 = expected ')'
+2004 = expected expression
+2005 = expected ')' or ',' in argument list
+2006 = multiple '=' in expression
+2007 = expected expression after ':'
+2008 = expected expression before '='
+2009 = expected expression after '='
+
+# Simplifier / numeric
+3000 = result is not a finite number
+3001 = division by zero
+
+# Command parsing
+4000 = command must start with '/'
+4001 = expected command name after '/'
+4002 = expected '(' after command name
+4003 = unmatched '(' in command
+4004 = unexpected input after command
+
+# Definitions / graphing
+5000 = '{}' cannot be defined in terms of itself
+5001 = x and y axis names must differ
+5002 = no variable named '{}'
+5003 = graph target must be an equation (lhs = rhs)
+5004 = equation references variable '{}' which is neither axis
+5005 = equation does not reference either axis variable
+
+# Graph rendering
+6000 = x range is empty: xLeft must be less than xRight
+6001 = y range is empty: yBottom must be less than yTop

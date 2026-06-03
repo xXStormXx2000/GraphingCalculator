@@ -1,0 +1,44 @@
+# Help topics, keyed by operator / function / constant / command name.
+# Use \n for line breaks within a multi-line entry.
+
+# Operators
++ = Addition operator. Example: 3 + 4 -> 7
+- = Subtraction or unary negation. Example: 4 - 3 -> 1, -6 + 3 -> -3
+* = Multiplication operator. Example: 4 * 3 -> 12
+/ = Division operator. Example: 8 / 2 -> 4
+^ = Exponentiation. Right-associative. Example: 2^3^2 -> 512
+: = Assignment. Stores the right-hand side under the given name.\nExample: a: 4*5 then 'a + 3' -> 23\nExample: f: x^2 + 3 then 'f + 1' -> x^2 + 4
+
+# Functions
+sin = sin(x) - sine of x in radians.
+cos = cos(x) - cosine of x in radians.
+tan = tan(x) - tangent of x in radians.
+asin = asin(x) - inverse sine, returns radians.
+acos = acos(x) - inverse cosine, returns radians.
+atan = atan(x) - inverse tangent, returns radians.
+sqrt = sqrt(x) - square root.
+abs = abs(x) - absolute value.
+log = log(base, x) - logarithm of x in given base. Example: log(2, 64) -> 6
+root = root(n, x) - n-th root of x. Example: root(2, 64) -> 8
+
+# Commands
+graph = /graph(x_name, y_name, x_min, x_max, y_min, y_max, equation_var)\nPlots an equation. The equation must be a stored variable.\nExample:\n  curve: y = t^2\n  /graph(t, y, -5, 5, -5, 30, curve)
+list = /list - prints all defined variables.
+clear = /clear - removes all defined variables.
+help = /help(topic) - prints help for an operator, function, or command.
+exit = /exit - quits the calculator. /quit also works.
+quit = /quit - quits the calculator. /exit also works.
+
+# Constants
+PI = Pi - ratio of a circle's circumference to its diameter.
+tau = Tau = 2*PI - one full turn in radians.
+e = Euler's number - the base of the natural logarithm.
+phi = Golden ratio = (1 + sqrt(5)) / 2.
+G = Gravitational constant in N*m^2/kg^2 (CODATA 2018).
+c = Speed of light in vacuum, in m/s (exact, SI definition).
+h = Planck constant in J*s (exact, SI 2019).
+hbar = Reduced Planck constant = h / (2*PI), in J*s (CODATA 2018).
+k_B = Boltzmann constant in J/K (exact, SI 2019).
+N_A = Avogadro constant in 1/mol (exact, SI 2019).
+R = Gas constant in J/(mol*K) (CODATA 2018).
+q_e = Elementary charge in C (exact, SI 2019).

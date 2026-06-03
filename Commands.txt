@@ -1,0 +1,10 @@
+# Maps the command name the user types to a canonical internal id.
+# To localize, translate the left-hand side only; ids on the right are fixed.
+# Aliases are just multiple names mapping to the same id.
+
+exit = exit
+quit = exit
+list = list
+clear = clear
+help = help
+graph = graph

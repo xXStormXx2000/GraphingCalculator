@@ -1,0 +1,27 @@
+# User-facing UI strings, keyed by stable id. Use \n for line breaks.
+# "{}" is replaced by a runtime value where noted.
+
+# Prefixes (a localizer may want "erreur: " or a different prompt)
+error_prefix = error:
+prompt_prefix = >>
+
+# Banner shown at startup
+banner = #########################################\n####                                 ####\n####   Storm's graphing calculator   ####\n####                                 ####\n#########################################\n\nOperators: +  -  *  /  ^  :\nFunctions: sin cos tan asin acos atan sqrt abs log root\nConstants: PI tau e phi G c h hbar k_B N_A R q_e\nCommands:  /graph  /list  /clear  /help  /exit\nType '/help(topic)' for details.\n
+
+# Command responses
+quitting = Quitting
+no_variables = (no variables defined)
+cleared = All variables cleared
+
+# Command error messages ({} is filled with a runtime value where present)
+usage_help = usage: /help(topic)
+no_help = no help available for '{}'
+graph_arg_count = /graph expects 7 arguments: x_name, y_name, x_min, x_max, y_min, y_max, equation
+bound_not_number = {} must be a number
+unknown_command = unknown command '/{}'
+
+# Names of the four graph bounds, used in bound_not_number
+bound_x_min = x_min
+bound_x_max = x_max
+bound_y_min = y_min
+bound_y_max = y_max
