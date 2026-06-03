@@ -119,7 +119,7 @@ Result<AstPtr> simplifySum(std::vector<SumTerm> terms, SourceSpan span) {
     for (SumTerm& t : nonConst) {
         double step = 1;
         BinaryNode* bN = std::get_if<BinaryNode>(&t.expr->value);
-        if(bN && (bN->op == BinaryOp::Div || bN->op == BinaryOp::Mul)){
+        if(bN && bN->op == BinaryOp::Mul){
             const NumberNode* numNode = std::get_if<NumberNode>(&bN->rhs->value);
             if(numNode) {
                 step = numNode->value;
