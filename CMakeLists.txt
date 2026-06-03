@@ -49,10 +49,10 @@ target_link_libraries(calculator PRIVATE calc_frontend)
 # Presentation data files (help text, error messages, UI strings, command
 # names), copied next to the binaries so the default cwd-relative lookup
 # finds them. Plain text, no build dependency.
-configure_file(${CMAKE_SOURCE_DIR}/data/help.txt     ${CMAKE_BINARY_DIR}/help.txt     COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/data/errors.txt   ${CMAKE_BINARY_DIR}/errors.txt   COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/data/ui.txt       ${CMAKE_BINARY_DIR}/ui.txt       COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/data/commands.txt ${CMAKE_BINARY_DIR}/commands.txt COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/data/Help.txt     ${CMAKE_BINARY_DIR}/Help.txt     COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/data/Errors.txt   ${CMAKE_BINARY_DIR}/Errors.txt   COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/data/Ui.txt       ${CMAKE_BINARY_DIR}/Ui.txt       COPYONLY)
+configure_file(${CMAKE_SOURCE_DIR}/data/Commands.txt ${CMAKE_BINARY_DIR}/Commands.txt COPYONLY)
 
 # ---- Tests -------------------------------------------------------------
 option(CALCULATOR_BUILD_TESTS "Build unit tests" ON)
