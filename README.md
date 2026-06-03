@@ -1,4 +1,4 @@
-# Storm's Graphing Calculator
+# Graphing Calculator
 
 A command-line graphing calculator with a REPL, ASCII plots, variable
 storage, and algebraic simplification across symbolic terms. Written in
