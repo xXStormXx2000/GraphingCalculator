@@ -11,7 +11,7 @@ using namespace core;
 namespace {
 
 bool signChange(double a, double b) {
-    if (std::isnan(a) || std::isnan(b)) return false;
+    if (!std::isfinite(a) || !std::isfinite(b)) return false;
     return (a > 0.0) != (b > 0.0);
 }
 
