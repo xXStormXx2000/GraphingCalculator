@@ -44,8 +44,6 @@ struct ProductTerm
     AstPtr expr;
 };
 
-// --- Flattening: collect all + / - terms recursively ---------------------
-
 void collectSum(const AstPtr& node, TermSign outerSign, std::vector<SumTerm>& out) {
     if (auto* b = std::get_if<BinaryNode>(&node->value)) {
         if (b->op == BinaryOp::Add) {
