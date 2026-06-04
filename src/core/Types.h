@@ -59,7 +59,7 @@ struct Diagnostic {
     std::string detail = {};  // optional payload, empty when the code needs none
 };
 
-// Lightweight Result<T> type. We don't pull in std::expected because
+// Lightweight Result<T> type.
 template <typename T>
 class Result {
 public:
