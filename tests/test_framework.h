@@ -12,65 +12,68 @@
 
 namespace test_framework {
 
-struct TestCase {
-    std::string name;
-    std::function<void()> fn;
-};
+	struct TestCase {
+		std::string name;
+		std::function<void()> fn;
+	};
 
-inline std::vector<TestCase>& registry() {
-    static std::vector<TestCase> r;
-    return r;
-}
+	inline std::vector<TestCase>& registry() {
+		static std::vector<TestCase> r;
+		return r;
+	}
 
-inline int& failureCount() {
-    static int c = 0;
-    return c;
-}
+	inline int& failureCount() {
+		static int c = 0;
+		return c;
+	}
 
-inline int& assertionCount() {
-    static int c = 0;
-    return c;
-}
+	inline int& assertionCount() {
+		static int c = 0;
+		return c;
+	}
 
-struct Registrar {
-    Registrar(std::string name, std::function<void()> fn) {
-        registry().push_back({std::move(name), std::move(fn)});
-    }
-};
+	struct Registrar {
+		Registrar(std::string name, std::function<void()> fn) {
+			registry().push_back({ std::move(name), std::move(fn) });
+		}
+	};
 
-inline void reportFailure(const char* file, int line, const std::string& expr) {
-    failureCount()++;
-    std::cerr << "  FAIL: " << file << ":" << line;
-    std::cerr << "\n        " << expr << "\n";
-}
+	inline void reportFailure(const char* file, int line, const std::string& expr) {
+		failureCount()++;
+		std::cerr << "  FAIL: " << file << ":" << line;
+		std::cerr << "\n        " << expr << "\n";
+	}
 
-inline int runAll() {
-    int passed = 0;
-    int failed = 0;
-    for (auto& tc : registry()) {
-        const int beforeFailures = failureCount();
-        std::cout << "[ RUN  ] " << tc.name << "\n";
-        try {
-            tc.fn();
-        } catch (const std::exception& e) {
-            failureCount()++;
-            std::cerr << "  FAIL: uncaught exception: " << e.what() << "\n";
-        } catch (...) {
-            failureCount()++;
-            std::cerr << "  FAIL: uncaught unknown exception\n";
-        }
-        if (failureCount() == beforeFailures) {
-            std::cout << "[  OK  ] " << tc.name << "\n";
-            ++passed;
-        } else {
-            std::cout << "[ FAIL ] " << tc.name << "\n";
-            ++failed;
-        }
-    }
-    std::cout << "\n" << assertionCount() << " assertions, "
-              << passed << " passed, " << failed << " failed.\n";
-    return failed == 0 ? 0 : 1;
-}
+	inline int runAll() {
+		int passed = 0;
+		int failed = 0;
+		for (auto& tc : registry()) {
+			const int beforeFailures = failureCount();
+			std::cout << "[ RUN  ] " << tc.name << "\n";
+			try {
+				tc.fn();
+			}
+			catch (const std::exception& e) {
+				failureCount()++;
+				std::cerr << "  FAIL: uncaught exception: " << e.what() << "\n";
+			}
+			catch (...) {
+				failureCount()++;
+				std::cerr << "  FAIL: uncaught unknown exception\n";
+			}
+			if (failureCount() == beforeFailures) {
+				std::cout << "[  OK  ] " << tc.name << "\n";
+				++passed;
+			}
+			else {
+				std::cout << "[ FAIL ] " << tc.name << "\n";
+				++failed;
+			}
+		}
+		std::cout << "\n" << assertionCount() << " assertions, "
+			<< passed << " passed, " << failed << " failed.\n";
+		return failed == 0 ? 0 : 1;
+	}
 
 }  // namespace test_framework
 

@@ -9,35 +9,35 @@
 
 namespace calc::core {
 
-// Virtual Machine Operation
-enum class VMop {
-    Push,
-    Bind,
-    Add, Sub, Mul, Div, Exp, Uminus,
-    Sin, Cos, Tan,
-    Asin, Acos, Atan,
-    Abs,
-    Log,
-    Sqrt ,Root
-};
+	// Virtual Machine Operation
+	enum class VMop {
+		Push,
+		Bind,
+		Add, Sub, Mul, Div, Exp, Uminus,
+		Sin, Cos, Tan,
+		Asin, Acos, Atan,
+		Abs,
+		Log,
+		Sqrt, Root
+	};
 
-// Bytecode structure to represent each instruction
-struct Bytecode
-{
-    VMop op;
-    double value;
-    size_t binding;
-    Bytecode(VMop o, double val = 0, size_t bind = 0);
-};
+	// Bytecode structure to represent each instruction
+	struct Bytecode
+	{
+		VMop op;
+		double value;
+		size_t binding;
+		Bytecode(VMop o, double val = 0, size_t bind = 0);
+	};
 
-// Function to execute the bytecode
-double execute(const std::vector<Bytecode>& bytecode,
-               const std::vector<double>& bindings,
-               std::vector<double>& stack);
+	// Function to execute the bytecode
+	double execute(const std::vector<Bytecode>& bytecode,
+		const std::vector<double>& bindings,
+		std::vector<double>& stack);
 
-// AST to Bytecode
-size_t ASTtoBytecode(const AstPtr AST, std::vector<Bytecode>& bytecode,
-                     const std::unordered_map<std::string, size_t>& bindings);
+	// AST to Bytecode
+	size_t ASTtoBytecode(const AstPtr AST, std::vector<Bytecode>& bytecode,
+		const std::unordered_map<std::string, size_t>& bindings);
 
 }
 

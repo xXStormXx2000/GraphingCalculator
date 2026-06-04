@@ -5,11 +5,11 @@
 
 namespace calc::core {
 
-// Recursively simplify an AST.
-Result<AstPtr> simplify(const AstPtr& node);
+	// Recursively simplify an AST.
+	Result<AstPtr> simplify(const AstPtr& node);
 
-// Rewrites an equation by multiplying both sides by every denominator,
-Result<AstPtr> clearDenominators(const AstPtr& equationNode);
+	// Rewrites an equation by multiplying both sides by every denominator,
+	Result<AstPtr> clearDenominators(const AstPtr& equationNode);
 
 }  // namespace calc::core
 
