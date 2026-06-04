@@ -106,10 +106,10 @@ Repl::Repl(std::istream& in, std::ostream& out) : m_in(in), m_out(out) {
     // Presentation strings live in external data files so they can be
     // edited or localized without rebuilding. Missing files are not fatal:
     // every lookup falls back to built-in English text.
-    m_errors.loadFromFile("errors.txt");
-    m_help.loadFromFile("help.txt");
-    m_ui.loadFromFile("ui.txt");
-    m_commands.loadFromFile("commands.txt");
+    m_errors.loadFromFile("Errors.txt");
+    m_help.loadFromFile("Help.txt");
+    m_ui.loadFromFile("Ui.txt");
+    m_commands.loadFromFile("Commands.txt");
 }
 
 void Repl::printBanner() {
