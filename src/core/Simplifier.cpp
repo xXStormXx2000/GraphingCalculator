@@ -373,7 +373,6 @@ namespace calc::core {
 					// Identity rules.
 					if (rConst && rv == 0.0) return makeNumber(1.0, node->span);  // x^0 = 1
 					if (rConst && rv == 1.0) return lhs;                           // x^1 = x
-					if (lConst && lv == 0.0) return makeNumber(0.0, node->span);   // 0^x = 0
 					if (lConst && lv == 1.0) return makeNumber(1.0, node->span);   // 1^x = 1
 
 					// (a^m)^n -> a^(m*n) when both m and n are integer literals.
