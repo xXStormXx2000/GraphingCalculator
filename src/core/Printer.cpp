@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <sstream>
 #include <string>
+#include <variant>
 
 namespace calc::core {
 
@@ -90,7 +91,11 @@ namespace calc::core {
 					switch (b.op) {
 					case BinaryOp::Add: opStr = " + "; break;
 					case BinaryOp::Sub: opStr = " - "; break;
-					case BinaryOp::Mul: opStr = "*";   break;
+					case BinaryOp::Mul: {
+						opStr = "*";
+						if (std::get_if<NumberNode>(&b.rhs->value)) return rhs + opStr + lhs;
+						break;
+					}
 					case BinaryOp::Div: opStr = "/";   break;
 					case BinaryOp::Pow: opStr = "^";   break;
 					}
