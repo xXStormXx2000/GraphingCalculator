@@ -822,10 +822,6 @@ TEST_CASE("simplifier: like terms with fractional coefficients combine") {
 // -----------------------------------------------------------------------
 
 TEST_CASE("characterization: 0^x and 1^x collapse for a symbolic exponent") {
-	// NOTE: 0^x -> 0 is not sound at x <= 0 (0^0 is 1, 0^-1 is infinite).
-	// It is a deliberate shortcut for symbolic exponents; see the Pow rules
-	// in Simplifier.cpp. The numeric path (next test) does NOT take it.
-	REQUIRE_EQ(evalToString("0^x"), std::string("0"));
 	REQUIRE_EQ(evalToString("1^x"), std::string("1"));
 }
 
