@@ -82,6 +82,13 @@ namespace calc::core {
 					return;
 				}
 			}
+			if (auto* u = std::get_if<UnaryNode>(&node->value)) {
+				if (u->op == UnaryOp::Negate) {
+					collectProduct(u->operand, outerRole, out);
+					out.push_back(ProductTerm{ outerRole, makeNumber(-1.0, node->span) });
+					return;
+				}
+			}
 			out.push_back(ProductTerm{ outerRole, node });
 		}
 

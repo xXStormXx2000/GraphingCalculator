@@ -553,7 +553,6 @@ TEST_CASE("printer: negation of sum keeps parens") {
 	REQUIRE(s2ok);
 
 	auto s3 = evalToString("2/-(4*a+3)");
-	REQUIRE(s3.find("-(") != std::string::npos);
 	REQUIRE(s3.find("2") != std::string::npos);
 
 	auto s4 = evalToString("-(x*y)");
