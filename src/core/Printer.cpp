@@ -93,7 +93,10 @@ namespace calc::core {
 					case BinaryOp::Sub: opStr = " - "; break;
 					case BinaryOp::Mul: {
 						opStr = "*";
-						if (std::get_if<NumberNode>(&b.rhs->value)) return rhs + opStr + lhs;
+						if (std::get_if<NumberNode>(&b.rhs->value)) {
+							if (lhs.size() >= 2 && lhs.at(0) == '1' && lhs.at(1) == '/') return rhs + lhs.substr(1);
+							return rhs + opStr + lhs;
+						}
 						break;
 					}
 					case BinaryOp::Div: opStr = "/";   break;
