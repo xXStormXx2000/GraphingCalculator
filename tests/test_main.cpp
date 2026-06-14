@@ -225,6 +225,16 @@ TEST_CASE("simplifier: double negation") {
 	REQUIRE_EQ(evalToString("-(-x)"), std::string("x"));
 }
 
+TEST_CASE("simplifier: negation does not produce a double minus") {
+	// Regression: -(a * -b) once printed "--1*a*b". Negation is canonicalized
+	// to a single -1-factor form, so no stacked minus can be produced and the
+	// two negations cancel to a plain product.
+	REQUIRE_EQ(evalToString("-(a*-b)"), std::string("a*b"));
+	REQUIRE_EQ(evalToString("-(-(-b))"), std::string("-b"));
+	REQUIRE_EQ(evalToString("-x"), std::string("-x"));
+	REQUIRE_EQ(evalToString("-(a+b)"), std::string("-(a + b)"));
+}
+
 // -----------------------------------------------------------------------
 // Printer (round-trip and parenthesization)
 // These tests operate on the internal AST/printer API directly.

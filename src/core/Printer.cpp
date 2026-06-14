@@ -93,7 +93,13 @@ namespace calc::core {
 					case BinaryOp::Sub: opStr = " - "; break;
 					case BinaryOp::Mul: {
 						opStr = "*";
-						if (std::get_if<NumberNode>(&b.rhs->value)) {
+						if (const NumberNode* rn = std::get_if<NumberNode>(&b.rhs->value)) {
+							// A -1 coefficient prints as a leading minus rather than "-1*x".
+							if (rn->value == -1.0) {
+								const int lp = precedenceOf(*b.lhs);
+								const std::string body = render(*b.lhs);
+								return "-" + (lp <= 10 ? "(" + body + ")" : body);
+							}
 							if (lhs.size() >= 2 && lhs.at(0) == '1' && lhs.at(1) == '/') return rhs + lhs.substr(1);
 							return rhs + opStr + lhs;
 						}

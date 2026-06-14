@@ -325,11 +325,11 @@ namespace calc::core {
 					if (isNumber(*inner, v)) {
 						return makeNumber(-v, node->span);
 					}
-					// Double negation.
-					if (auto* innerU = std::get_if<UnaryNode>(&inner->value)) {
-						if (innerU->op == UnaryOp::Negate) return innerU->operand;
-					}
-					return makeUnary(u.op, std::move(inner), node->span);
+					// Canonicalize negation to a single internal form
+					std::vector<ProductTerm> terms;
+					collectProduct(inner, TermRole::Numer, terms);
+					terms.push_back(ProductTerm{ TermRole::Numer, makeNumber(-1.0, node->span) });
+					return simplifyProduct(std::move(terms), node->span);
 				},
 				[&](const BinaryNode& b) -> Result<AstPtr> {
 					// For + - * / we flatten into n-ary form.
