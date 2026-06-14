@@ -152,6 +152,13 @@ namespace calc::core {
 			evalResult.value = n->value;
 		}
 		if (p.assignTo != "") {
+			// Reject attempts to shadow a built-in constant. Constant names
+			// are reserved: resolution always substitutes the constant's
+			// value, so a stored definition under the same name could never
+			// be reached and would silently never apply.
+			if (constants().find(p.assignTo) != constants().end()) {
+				return Diagnostic{ DiagCode::ConstantReassignment, p.expr->span, p.assignTo };
+			}
 			// Reject self-referential definitions.
 			std::unordered_set<std::string> freeVars;
 			collectVariables(*simplified, freeVars);

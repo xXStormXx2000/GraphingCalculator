@@ -374,8 +374,8 @@ TEST_CASE("clearDenominators: equation without denominators is unchanged in mean
 TEST_CASE("graph: y = 1/x produces no asymptote line") {
 	std::stringstream in, out;
 	Repl r(in, out);
-	r.processLine("h: y = 1/x");
-	auto resp = r.processLine("/graph(x, y, -3, 3, -3, 3, h)");
+	r.processLine("g1: y = 1/x");
+	auto resp = r.processLine("/graph(x, y, -3, 3, -3, 3, g1)");
 	std::vector<std::string> lines;
 	std::size_t pos = 0;
 	while (pos < resp.size()) {
@@ -486,8 +486,20 @@ TEST_CASE("repl: legitimate chained assignments still work") {
 	Repl r(in, out);
 	REQUIRE_EQ(r.processLine("a: 5"), std::string("a: 5"));
 	REQUIRE_EQ(r.processLine("b: a + 1"), std::string("b: 6"));
-	REQUIRE_EQ(r.processLine("c: a * b"), std::string("c: 30"));
-	REQUIRE_EQ(r.processLine("a: c + 1"), std::string("a: 31"));
+	REQUIRE_EQ(r.processLine("d: a * b"), std::string("d: 30"));
+	REQUIRE_EQ(r.processLine("a: d + 1"), std::string("a: 31"));
+}
+
+TEST_CASE("repl: built-in constants cannot be reassigned") {
+	std::stringstream in, out;
+	Repl r(in, out);
+	// Names in the constant table are reserved; assigning to one is an error
+	// rather than a silently-shadowed (and unreachable) definition.
+	REQUIRE(r.processLine("c: 5").find("reserved constant") != std::string::npos);
+	REQUIRE(r.processLine("PI: 3").find("reserved constant") != std::string::npos);
+	REQUIRE(r.processLine("h: 1").find("reserved constant") != std::string::npos);
+	// A non-constant single letter still works.
+	REQUIRE_EQ(r.processLine("d: 5"), std::string("d: 5"));
 }
 
 TEST_CASE("repl: equation with axis variables does not look self-referential") {

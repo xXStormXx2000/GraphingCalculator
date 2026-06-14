@@ -46,6 +46,7 @@ namespace calc::core {
 		GraphTargetNotEquation = 5003,
 		NonAxisVariable = 5004,  // detail: variable name
 		NoAxisVariable = 5005,
+		ConstantReassignment = 5006,  // detail: the reserved constant name
 
 		// Graph rendering (frontend Grapher) --------------------------------
 		EmptyXRange = 6000,

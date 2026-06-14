@@ -36,6 +36,7 @@
 5003 = graph target must be an equation (lhs = rhs)
 5004 = equation references variable '{}' which is neither axis
 5005 = equation does not reference either axis variable
+5006 = '{}' is a reserved constant and cannot be redefined
 
 # Graph rendering
 6000 = x range is empty: xLeft must be less than xRight
