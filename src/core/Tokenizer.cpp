@@ -47,6 +47,20 @@ namespace calc::core {
 					if (d == '.' && !seenDot) { seenDot = true; ++i; continue; }
 					break;
 				}
+				// Optional exponent: e / E, an optional sign, then at least one
+				// digit. The digit requirement is what keeps a bare trailing `e`
+				// as the constant rather than swallowing it here -- `2e` stays
+				// `2 * e` and `e^2` stays the constant, while `1e-4` is one
+				// number. We only commit `i` past the `e` once the lookahead
+				// confirms a well-formed exponent.
+				if (i < n && (input[i] == 'e' || input[i] == 'E')) {
+					std::size_t j = i + 1;
+					if (j < n && (input[j] == '+' || input[j] == '-')) ++j;
+					if (j < n && std::isdigit(static_cast<unsigned char>(input[j]))) {
+						i = j;
+						while (i < n && std::isdigit(static_cast<unsigned char>(input[i]))) ++i;
+					}
+				}
 				std::string_view text = input.substr(start, i - start);
 				double value = 0.0;
 				// from_chars on doubles is supported in C++17 onward; libstdc++

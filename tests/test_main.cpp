@@ -85,6 +85,55 @@ TEST_CASE("tokenizer: numbers with decimals") {
 	REQUIRE_APPROX(toks[2].number, 0.0, 1e-12);
 }
 
+TEST_CASE("tokenizer: scientific notation") {
+	auto r = tokenize("1e4 1e-4 1.5e3 2.5E-2 6.022e23");
+	REQUIRE(r.ok());
+	auto& toks = r.value();
+	REQUIRE_EQ(toks[0].kind, TokenKind::Number);
+	REQUIRE_APPROX(toks[0].number, 1e4, 1e-9);
+	REQUIRE_APPROX(toks[1].number, 1e-4, 1e-18);
+	REQUIRE_APPROX(toks[2].number, 1.5e3, 1e-9);
+	REQUIRE_APPROX(toks[3].number, 2.5e-2, 1e-12);
+	REQUIRE_APPROX(toks[4].number, 6.022e23, 1e15);
+	// A leading-dot mantissa with an exponent is one number.
+	auto r2 = tokenize(".5e3");
+	REQUIRE(r2.ok());
+	REQUIRE_EQ(r2.value()[0].kind, TokenKind::Number);
+	REQUIRE_APPROX(r2.value()[0].number, 500.0, 1e-9);
+}
+
+TEST_CASE("tokenizer: e disambiguation (constant vs exponent)") {
+	// A bare `e` with no following digit stays the constant identifier, so
+	// these must NOT be swallowed into a numeric literal.
+	auto r1 = tokenize("2e");          // 2 * e  -> Number, Identifier
+	REQUIRE(r1.ok());
+	REQUIRE_EQ(r1.value()[0].kind, TokenKind::Number);
+	REQUIRE_APPROX(r1.value()[0].number, 2.0, 1e-12);
+	REQUIRE_EQ(r1.value()[1].kind, TokenKind::Identifier);
+
+	auto r2 = tokenize("e");           // bare constant
+	REQUIRE(r2.ok());
+	REQUIRE_EQ(r2.value()[0].kind, TokenKind::Identifier);
+
+	// `2e+x` has no exponent digit after the sign, so the `e` is again the
+	// constant: this tokenizes as 2, e, +, x (a parse-level product/sum,
+	// not a malformed number).
+	auto r3 = tokenize("2e+1");        // this IS a valid exponent -> one number
+	REQUIRE(r3.ok());
+	REQUIRE_EQ(r3.value()[0].kind, TokenKind::Number);
+	REQUIRE_APPROX(r3.value()[0].number, 20.0, 1e-9);
+}
+
+TEST_CASE("eval: scientific notation end to end") {
+	REQUIRE_APPROX(evalToNumber("1e-4"), 1e-4, 1e-18);
+	REQUIRE_APPROX(evalToNumber("1e-4 + 1"), 1.0001, 1e-12);
+	REQUIRE_APPROX(evalToNumber("2.5e3 * 2"), 5000.0, 1e-9);
+	REQUIRE_APPROX(evalToNumber("6.022e23 / 2"), 3.011e23, 1e15);
+	// `e` still works as the constant alongside exponent literals.
+	REQUIRE_APPROX(evalToNumber("2*e"), 2.0 * 2.718281828459045, 1e-9);
+	REQUIRE_APPROX(evalToNumber("1e0"), 1.0, 1e-12);
+}
+
 TEST_CASE("tokenizer: identifiers vs slash command") {
 	auto r1 = tokenize("/list");
 	REQUIRE(r1.ok());
