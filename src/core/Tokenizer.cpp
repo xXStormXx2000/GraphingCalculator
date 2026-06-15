@@ -47,12 +47,7 @@ namespace calc::core {
 					if (d == '.' && !seenDot) { seenDot = true; ++i; continue; }
 					break;
 				}
-				// Optional exponent: e / E, an optional sign, then at least one
-				// digit. The digit requirement is what keeps a bare trailing `e`
-				// as the constant rather than swallowing it here -- `2e` stays
-				// `2 * e` and `e^2` stays the constant, while `1e-4` is one
-				// number. We only commit `i` past the `e` once the lookahead
-				// confirms a well-formed exponent.
+				// Support scientific notation
 				if (i < n && (input[i] == 'e' || input[i] == 'E')) {
 					std::size_t j = i + 1;
 					if (j < n && (input[j] == '+' || input[j] == '-')) ++j;
