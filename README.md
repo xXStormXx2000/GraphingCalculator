@@ -126,6 +126,80 @@ hardcoded English beyond compiled-in fallbacks.
 | `StringTable.{h,cpp}` | flat key/value file loader for the data files |
 | `main.cpp` | entry point |
 
+## Using the engine as a library
+
+The calculation engine is a self-contained, reusable library; the console
+program is simply its first consumer. The engine has no I/O, no user-facing
+text, and no dependency on the frontend, so another project can link it and
+drive it through `CalculatorCore.h` alone.
+
+The build exports the engine as the target `Calc::core`. There are two ways
+to consume it, and the target name is the same either way, so consuming code
+is identical regardless of which you choose.
+
+**Vendored (`add_subdirectory`).** Drop this repository into your own tree
+(for example as a Git submodule) and pull it in:
+
+```cmake
+add_subdirectory(GraphingCalculator)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE Calc::core)
+```
+
+When consumed this way the calculator binary, the frontend, and the tests are
+not built — only the engine. (They are gated behind a top-level-project check,
+so they build only when this repository is the project being built directly.)
+
+**Installed (`find_package`).** Install once, then locate the package from any
+unrelated project:
+
+```sh
+cmake -B build -S .
+cmake --build build
+cmake --install build --prefix /your/install/prefix
+```
+
+```cmake
+find_package(Calc 1.0 REQUIRED)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE Calc::core)
+```
+
+If the package is installed to a non-standard prefix, point CMake at it with
+`-DCMAKE_PREFIX_PATH=/your/install/prefix` when configuring the consumer.
+
+### Public surface
+
+Only three headers are installed: `CalculatorCore.h` (the engine API),
+`Types.h` (which it includes, for `Result` and `Diagnostic`), and `DiagCode.h`
+(which `Types.h` includes, for the diagnostic codes). Everything else in
+`src/core` — the AST, parser, simplifier, bytecode VM — is internal and not
+installed: the engine is hidden behind a pimpl, so consumers never see those
+types.
+
+A minimal consumer:
+
+```cpp
+#include "CalculatorCore.h"
+#include <iostream>
+
+int main() {
+    calc::core::CalculatorCore engine;
+    auto result = engine.evaluateLine("3*a + 2*a");
+    if (result) {
+        std::cout << result.value().canonical << '\n';  // prints: 5*a
+    }
+}
+```
+
+`evaluateLine` returns a `Result`; on success its `canonical` field holds the
+printed form, and `value` additionally holds a number when the expression
+reduced to one (no free variables remained). On failure the `Result` carries a
+`Diagnostic` — a `DiagCode` plus an optional detail payload — leaving any
+user-facing wording to the caller.
+
 ## How simplification works
 
 The parser produces an ordinary binary AST. The simplifier produces a

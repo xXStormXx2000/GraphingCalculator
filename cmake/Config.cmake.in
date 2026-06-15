@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+# Pull in the exported Calc::core target. find_package(Calc) loads this file,
+# which loads the targets file installed alongside it, making Calc::core
+# available to the consuming project.
+include("${CMAKE_CURRENT_LIST_DIR}/CalcTargets.cmake")
+
+check_required_components(Calc)
