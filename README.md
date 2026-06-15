@@ -200,6 +200,14 @@ reduced to one (no free variables remained). On failure the `Result` carries a
 `Diagnostic` — a `DiagCode` plus an optional detail payload — leaving any
 user-facing wording to the caller.
 
+Because the engine emits codes rather than text, supplying that wording is the
+one piece of presentation a consumer must provide. `DiagCode.h` (installed, so
+you already have it) enumerates every code the engine can emit; `data/Errors.txt`
+is the reference mapping from each code to a sample English message, with `{}`
+marking where the detail payload is substituted. It is not needed at runtime by
+the engine — it exists for the frontend and as a starting point you can adapt or
+replace with your own messages, in your own language, however you render errors.
+
 ## How simplification works
 
 The parser produces an ordinary binary AST. The simplifier produces a
