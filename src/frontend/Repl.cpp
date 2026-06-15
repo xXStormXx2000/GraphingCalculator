@@ -1,8 +1,18 @@
 #include "Repl.h"
 
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <cstdint>
+#include <mach-o/dyld.h>
+#else
+#include <system_error>
+#endif
 
 #include "Grapher.h"
 
@@ -13,8 +23,46 @@ namespace calc {
 
 	namespace {
 
-		// Built-in English fallbacks for UI strings, used when ui.txt is missing or
-		// lacks a key. Keeps the calculator fully usable with no data files.
+		// Directory containing the running executable. Data files are resolved
+		// relative to this rather than the current working directory, so the
+		// program finds them no matter where it is launched from. Each platform
+		// branch asks the OS for the executable's own path; on any failure we
+		// fall back to the current directory, which is no worse than before and
+		// still non-fatal because every data lookup has a built-in fallback.
+		std::filesystem::path executableDir() {
+#if defined(_WIN32)
+			std::wstring buf(MAX_PATH, L'\0');
+			for (;;) {
+				const DWORD len =
+					GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+				if (len == 0) return std::filesystem::current_path();
+				// Truncated: the buffer was too small. Grow and retry.
+				if (len == buf.size()) { buf.resize(buf.size() * 2); continue; }
+				buf.resize(len);
+				break;
+			}
+			return std::filesystem::path(buf).parent_path();
+#elif defined(__APPLE__)
+			std::uint32_t size = 0;
+			_NSGetExecutablePath(nullptr, &size);  // first call reports needed size
+			std::string buf(size, '\0');
+			if (_NSGetExecutablePath(buf.data(), &size) != 0)
+				return std::filesystem::current_path();
+			if (auto pos = buf.find('\0'); pos != std::string::npos) buf.resize(pos);
+			std::error_code ec;
+			std::filesystem::path canonical = std::filesystem::weakly_canonical(buf, ec);
+			if (ec) return std::filesystem::path(buf).parent_path();
+			return canonical.parent_path();
+#else
+			std::error_code ec;
+			const std::filesystem::path self =
+				std::filesystem::read_symlink("/proc/self/exe", ec);
+			if (ec) return std::filesystem::current_path();
+			return self.parent_path();
+#endif
+		}
+
+
 		const std::unordered_map<std::string, std::string>& uiFallbacks() {
 			static const std::unordered_map<std::string, std::string> table = {
 																			   {"error_prefix",     "error:"},
@@ -104,12 +152,15 @@ namespace calc {
 
 	Repl::Repl(std::istream& in, std::ostream& out) : m_in(in), m_out(out) {
 		// Presentation strings live in external data files so they can be
-		// edited or localized without rebuilding. Missing files are not fatal:
-		// every lookup falls back to built-in English text.
-		m_errors.loadFromFile("Errors.txt");
-		m_help.loadFromFile("Help.txt");
-		m_ui.loadFromFile("Ui.txt");
-		m_commands.loadFromFile("Commands.txt");
+		// edited or localized without rebuilding. Resolve them relative to the
+		// executable's own location, not the current working directory, so the
+		// program works when launched from anywhere. Missing files are not
+		// fatal: every lookup falls back to built-in English text.
+		const std::filesystem::path base = executableDir();
+		m_errors.loadFromFile((base / "Errors.txt").string());
+		m_help.loadFromFile((base / "Help.txt").string());
+		m_ui.loadFromFile((base / "Ui.txt").string());
+		m_commands.loadFromFile((base / "Commands.txt").string());
 	}
 
 	void Repl::printBanner() {

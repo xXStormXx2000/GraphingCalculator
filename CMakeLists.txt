@@ -47,12 +47,23 @@ add_executable(calculator src/frontend/main.cpp)
 target_link_libraries(calculator PRIVATE calc_frontend)
 
 # Presentation data files (help text, error messages, UI strings, command
-# names), copied next to the binaries so the default cwd-relative lookup
-# finds them. Plain text, no build dependency.
-configure_file(${CMAKE_SOURCE_DIR}/data/Help.txt     ${CMAKE_BINARY_DIR}/Help.txt     COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/data/Errors.txt   ${CMAKE_BINARY_DIR}/Errors.txt   COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/data/Ui.txt       ${CMAKE_BINARY_DIR}/Ui.txt       COPYONLY)
-configure_file(${CMAKE_SOURCE_DIR}/data/Commands.txt ${CMAKE_BINARY_DIR}/Commands.txt COPYONLY)
+# names). They are resolved at runtime relative to the executable's own
+# location, so they must sit next to the binary. Copy them there after each
+# build. Using $<TARGET_FILE_DIR:...> (rather than CMAKE_BINARY_DIR) puts them
+# in the right place for multi-config generators too, where the binary lands
+# in a per-config subdirectory like Debug/.
+set(CALCULATOR_DATA_FILES
+    ${CMAKE_SOURCE_DIR}/data/Help.txt
+    ${CMAKE_SOURCE_DIR}/data/Errors.txt
+    ${CMAKE_SOURCE_DIR}/data/Ui.txt
+    ${CMAKE_SOURCE_DIR}/data/Commands.txt
+)
+add_custom_command(TARGET calculator POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CALCULATOR_DATA_FILES} $<TARGET_FILE_DIR:calculator>
+    COMMENT "Staging data files next to the calculator binary"
+    VERBATIM
+)
 
 # ---- Tests -------------------------------------------------------------
 option(CALCULATOR_BUILD_TESTS "Build unit tests" ON)
@@ -65,11 +76,23 @@ if(CALCULATOR_BUILD_TESTS)
     # Tests exercise both layers, so they link the frontend (which pulls in
     # the engine transitively).
     target_link_libraries(calc_tests PRIVATE calc_frontend)
-    # Run from the binary dir so the copied data files are on the cwd path.
-    add_test(NAME calc_tests COMMAND calc_tests WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    # The tests construct a Repl, which loads the data files relative to the
+    # test executable's location. Stage them next to the test binary too.
+    add_custom_command(TARGET calc_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CALCULATOR_DATA_FILES} $<TARGET_FILE_DIR:calc_tests>
+        COMMENT "Staging data files next to the test binary"
+        VERBATIM
+    )
+    add_test(NAME calc_tests COMMAND calc_tests)
 endif()
 
 include(GNUInstallDirs)
 install(TARGETS calculator
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+# The runtime lookup is relative to the executable, so the data files must be
+# installed into the same directory as the binary.
+install(FILES ${CALCULATOR_DATA_FILES}
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
