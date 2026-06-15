@@ -30,7 +30,7 @@ namespace calc::core {
 		};
 		struct SumTerm
 		{
-			TermSign sign;
+			TermSign sign = TermSign::Pos;
 			AstPtr expr;
 		};
 
