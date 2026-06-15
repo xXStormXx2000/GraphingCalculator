@@ -103,9 +103,11 @@ TEST_CASE("tokenizer: scientific notation") {
 }
 
 TEST_CASE("tokenizer: e disambiguation (constant vs exponent)") {
-	// A bare `e` with no following digit stays the constant identifier, so
-	// these must NOT be swallowed into a numeric literal.
-	auto r1 = tokenize("2e");          // 2 * e  -> Number, Identifier
+	// A bare `e` with no following digit must NOT be swallowed into a numeric
+	// literal -- it stays a separate constant identifier. With no implicit
+	// multiplication, `2e` is therefore Number followed by Identifier, which
+	// is a parse error at the next layer (asserted below), NOT a product.
+	auto r1 = tokenize("2e");
 	REQUIRE(r1.ok());
 	REQUIRE_EQ(r1.value()[0].kind, TokenKind::Number);
 	REQUIRE_APPROX(r1.value()[0].number, 2.0, 1e-12);
@@ -115,13 +117,22 @@ TEST_CASE("tokenizer: e disambiguation (constant vs exponent)") {
 	REQUIRE(r2.ok());
 	REQUIRE_EQ(r2.value()[0].kind, TokenKind::Identifier);
 
-	// `2e+x` has no exponent digit after the sign, so the `e` is again the
-	// constant: this tokenizes as 2, e, +, x (a parse-level product/sum,
-	// not a malformed number).
-	auto r3 = tokenize("2e+1");        // this IS a valid exponent -> one number
+	// A well-formed exponent (sign + digit after `e`) IS one number.
+	auto r3 = tokenize("2e+1");
 	REQUIRE(r3.ok());
+	REQUIRE_EQ(r3.value().size(), std::size_t{ 2 });  // Number EOF
 	REQUIRE_EQ(r3.value()[0].kind, TokenKind::Number);
 	REQUIRE_APPROX(r3.value()[0].number, 20.0, 1e-9);
+}
+
+TEST_CASE("parser: bare e after a number is not implicit multiplication") {
+	// `2e` tokenizes as Number, Identifier with no operator between them.
+	// Since implicit multiplication is not supported, this must be rejected
+	// at parse time rather than silently treated as 2 * e.
+	auto t = tokenize("2e");
+	REQUIRE(t.ok());
+	auto p = parseExpression(t.value());
+	REQUIRE(!p.ok());
 }
 
 TEST_CASE("eval: scientific notation end to end") {
