@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "Builtins.h"
@@ -44,58 +45,82 @@ namespace calc::core {
 			AstPtr expr;
 		};
 
-		void collectSum(const AstPtr& node, TermSign outerSign, std::vector<SumTerm>& out) {
-			if (auto* b = std::get_if<BinaryNode>(&node->value)) {
-				if (b->op == BinaryOp::Add) {
-					collectSum(b->lhs, outerSign, out);
-					collectSum(b->rhs, outerSign, out);
-					return;
-				}
-				if (b->op == BinaryOp::Sub) {
-					collectSum(b->lhs, outerSign, out);
-					const TermSign flipped = (outerSign == TermSign::Pos) ? TermSign::Neg : TermSign::Pos;
-					collectSum(b->rhs, flipped, out);
-					return;
-				}
-			}
-			if (auto* u = std::get_if<UnaryNode>(&node->value)) {
-				if (u->op == UnaryOp::Negate) {
-					const TermSign flipped = (outerSign == TermSign::Pos) ? TermSign::Neg : TermSign::Pos;
-					collectSum(u->operand, flipped, out);
-					return;
-				}
-			}
-			out.push_back(SumTerm{ outerSign, node });
-		}
-
-		void collectProduct(const AstPtr& node, TermRole outerRole, std::vector<ProductTerm>& out) {
-			if (auto* b = std::get_if<BinaryNode>(&node->value)) {
-				if (b->op == BinaryOp::Mul) {
-					collectProduct(b->lhs, outerRole, out);
-					collectProduct(b->rhs, outerRole, out);
-					return;
-				}
-				if (b->op == BinaryOp::Div) {
-					collectProduct(b->lhs, outerRole, out);
-					const TermRole flipped = (outerRole == TermRole::Numer) ? TermRole::Denom : TermRole::Numer;
-					collectProduct(b->rhs, flipped, out);
-					return;
-				}
-			}
-			if (auto* u = std::get_if<UnaryNode>(&node->value)) {
-				if (u->op == UnaryOp::Negate) {
-					collectProduct(u->operand, outerRole, out);
-					out.push_back(ProductTerm{ outerRole, makeNumber(-1.0, node->span) });
-					return;
-				}
-			}
-			out.push_back(ProductTerm{ outerRole, node });
-		}
-
 		// --- Simplification core --------------------------------------------------
 
 
 		Result<AstPtr> simplifyImpl(const AstPtr& node);
+
+		// Simplify both children of a binary node in place. Returns a diagnostic
+		// if either child fails, otherwise nullopt. Pulling this out removes the
+		// repeated "simplify / check / assign" triple that both collectors need
+		// before they can flatten — the children must be in their final form
+		// before flattening inspects them (e.g. so a+a -> 2*a is visible as a
+		// product factor, not collected as an opaque sum).
+		std::optional<Diagnostic> simplifyChildren(BinaryNode& b) {
+			Result<AstPtr> lr = simplifyImpl(b.lhs);
+			if (!lr) return lr.error();
+			b.lhs = lr.value();
+
+			Result<AstPtr> rr = simplifyImpl(b.rhs);
+			if (!rr) return rr.error();
+			b.rhs = rr.value();
+			return std::nullopt;
+		}
+
+		// Flatten a `+`/`-` chain into signed terms. Children are simplified
+		// during descent so that like-term grouping keys are computed over
+		// canonical sub-trees. Returns a diagnostic on failure, else nullopt;
+		// the flattened terms are appended to `out`.
+		std::optional<Diagnostic> collectSum(const AstPtr& node, TermSign outerSign, std::vector<SumTerm>& out) {
+			if (auto* b = std::get_if<BinaryNode>(&node->value)) {
+				if (auto err = simplifyChildren(*b)) return err;
+
+				if (b->op == BinaryOp::Add || b->op == BinaryOp::Sub) {
+					if (auto err = collectSum(b->lhs, outerSign, out)) return err;
+					// `-` flips the sign of everything on its right.
+					const TermSign rhsSign =
+						(b->op == BinaryOp::Sub)
+						? (outerSign == TermSign::Pos ? TermSign::Neg : TermSign::Pos)
+						: outerSign;
+					return collectSum(b->rhs, rhsSign, out);
+				}
+			}
+			if (auto* u = std::get_if<UnaryNode>(&node->value)) {
+				if (u->op == UnaryOp::Negate) {
+					const TermSign flipped = (outerSign == TermSign::Pos) ? TermSign::Neg : TermSign::Pos;
+					return collectSum(u->operand, flipped, out);
+				}
+			}
+			out.push_back(SumTerm{ outerSign, node });
+			return std::nullopt;
+		}
+
+		// Flatten a `*`/`/` chain into numerator/denominator factors. Mirror of
+		// collectSum: `/` flips numer<->denom the way `-` flips the sum sign, and
+		// a unary negate contributes a -1 factor.
+		std::optional<Diagnostic> collectProduct(const AstPtr& node, TermRole outerRole, std::vector<ProductTerm>& out) {
+			if (auto* b = std::get_if<BinaryNode>(&node->value)) {
+				if (auto err = simplifyChildren(*b)) return err;
+
+				if (b->op == BinaryOp::Mul || b->op == BinaryOp::Div) {
+					if (auto err = collectProduct(b->lhs, outerRole, out)) return err;
+					const TermRole rhsRole =
+						(b->op == BinaryOp::Div)
+						? (outerRole == TermRole::Numer ? TermRole::Denom : TermRole::Numer)
+						: outerRole;
+					return collectProduct(b->rhs, rhsRole, out);
+				}
+			}
+			if (auto* u = std::get_if<UnaryNode>(&node->value)) {
+				if (u->op == UnaryOp::Negate) {
+					if (auto err = collectProduct(u->operand, outerRole, out)) return err;
+					out.push_back(ProductTerm{ outerRole, makeNumber(-1.0, node->span) });
+					return std::nullopt;
+				}
+			}
+			out.push_back(ProductTerm{ outerRole, node });
+			return std::nullopt;
+		}
 
 		// After flattening a `+`/`-` chain into a list of signed terms, fold
 		// numeric terms together and combine like terms by counting their net
@@ -231,8 +256,17 @@ namespace calc::core {
 			std::map<std::string, int> exponents;
 			std::map<std::string, AstPtr> representative;
 			for (ProductTerm& t : nonConst) {
+				int step = 1;
+				BinaryNode* bN = std::get_if<BinaryNode>(&t.expr->value);
+				if (bN && bN->op == BinaryOp::Pow) {
+					const NumberNode* numNode = std::get_if<NumberNode>(&bN->rhs->value);
+					if (numNode && numNode->value == std::trunc(numNode->value)) {
+						step = static_cast<int>(numNode->value);
+						t.expr = bN->lhs;
+					}
+				}
 				std::string key = toString(*t.expr);
-				exponents[key] += (t.role == TermRole::Numer) ? 1 : -1;
+				exponents[key] += (t.role == TermRole::Numer) ? step : -step;
 				if (representative.find(key) == representative.end()) {
 					representative[key] = std::move(t.expr);
 				}
@@ -327,7 +361,7 @@ namespace calc::core {
 					}
 					// Canonicalize negation to a single internal form
 					std::vector<ProductTerm> terms;
-					collectProduct(inner, TermRole::Numer, terms);
+					if (auto err = collectProduct(inner, TermRole::Numer, terms)) return *err;
 					terms.push_back(ProductTerm{ TermRole::Numer, makeNumber(-1.0, node->span) });
 					return simplifyProduct(std::move(terms), node->span);
 				},
@@ -335,22 +369,12 @@ namespace calc::core {
 					// For + - * / we flatten into n-ary form.
 					if (b.op == BinaryOp::Add || b.op == BinaryOp::Sub) {
 						std::vector<SumTerm> terms;
-						collectSum(node, TermSign::Pos, terms);
-						for (SumTerm& t : terms) {
-							Result<AstPtr> exprR = simplifyImpl(t.expr);
-							if (!exprR) return std::move(exprR).error();
-							t.expr = exprR.value();
-						}
+						if (auto err = collectSum(node, TermSign::Pos, terms)) return *err;
 						return simplifySum(std::move(terms), node->span);
 					}
 					if (b.op == BinaryOp::Mul || b.op == BinaryOp::Div) {
 						std::vector<ProductTerm> terms;
-						collectProduct(node, TermRole::Numer, terms);
-						for (ProductTerm& t : terms) {
-							Result<AstPtr> exprR = simplifyImpl(t.expr);
-							if (!exprR) return std::move(exprR).error();
-							t.expr = exprR.value();
-						}
+						if (auto err = collectProduct(node, TermRole::Numer, terms)) return *err;
 						return simplifyProduct(std::move(terms), node->span);
 					}
 					// ^ : not flattened (right-assoc, non-commutative).
