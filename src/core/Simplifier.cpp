@@ -93,6 +93,13 @@ namespace calc::core {
 						: outerSign;
 					return collectSum(b->rhs, rhsSign, out);
 				}
+				if (b->op == BinaryOp::Mul) {
+					const NumberNode* numNode = std::get_if<NumberNode>(&b->rhs->value);
+					if (numNode && numNode->value == -1.) {
+						const TermSign flipped = (outerSign == TermSign::Pos) ? TermSign::Neg : TermSign::Pos;
+						return collectSum(b->lhs, flipped, out);
+					}
+				}
 			}
 			if (auto* u = std::get_if<UnaryNode>(&node->value)) {
 				if (u->op == UnaryOp::Negate) {
