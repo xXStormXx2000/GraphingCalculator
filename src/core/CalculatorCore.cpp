@@ -9,6 +9,7 @@
 
 #include <unordered_set>
 #include <unordered_map>
+#include <string>
 namespace calc::core {
 
 	struct PlotFunctor::Impl {
@@ -34,21 +35,27 @@ namespace calc::core {
 	}
 
 	struct CalculatorCore::Impl {
-		std::unordered_map<std::string, AstPtr> m_vars;
-		AstPtr substituteVariables(const AstPtr& node) const;
+		struct ASTVar {
+			AstPtr ast;
+			std::size_t size = 0;
+		};
+		std::unordered_map<std::string, ASTVar> m_vars;
+		AstPtr substituteVariables(const AstPtr& node, std::size_t& size, std::size_t maxSize, bool& toBig) const;
 		AstPtr substituteVariablesImpl(const AstPtr& node,
 			std::unordered_set<std::string>& expanding,
-			bool inSubExpression) const;
+			bool inSubExpression, std::size_t& size, std::size_t maxSize, bool& toBig) const;
 	};
 
-	AstPtr CalculatorCore::Impl::substituteVariables(const AstPtr& node) const {
+	AstPtr CalculatorCore::Impl::substituteVariables(const AstPtr& node, std::size_t& size, std::size_t maxSize, bool& toBig) const {
 		std::unordered_set<std::string> expanding;
-		return substituteVariablesImpl(node, expanding, /*inSubExpression=*/false);
+		toBig = false;
+		return substituteVariablesImpl(node, expanding, /*inSubExpression=*/false, size, maxSize, toBig);
 	}
 
 	AstPtr CalculatorCore::Impl::substituteVariablesImpl(const AstPtr& node,
 		std::unordered_set<std::string>& expanding,
-		bool inSubExpression) const {
+		bool inSubExpression, std::size_t& size, std::size_t maxSize, bool& toBig) const {
+		if (toBig) return node;  // short-circuit if we've already blown the size budget
 		return std::visit(overloaded{
 							  [&](const NumberNode&) -> AstPtr { return node; },
 							  [&](const VariableNode& v) -> AstPtr {
@@ -60,7 +67,7 @@ namespace calc::core {
 								  // equation to a number. At the top level (e.g. typing `p` at
 								  // the prompt or `q: p` to copy an equation), inlining is fine.
 								  if (inSubExpression &&
-									  std::get_if<EquationNode>(&it->second->value)) {
+									  std::get_if<EquationNode>(&it->second.ast->value)) {
 									  return node;
 								  }
 								  // Defensive guard against infinite recursion.
@@ -68,7 +75,12 @@ namespace calc::core {
 								  expanding.insert(v.name);
 								  // The replacement tree takes the place of this VariableNode,
 								  // so it inherits the current sub-expression context.
-								  AstPtr result = substituteVariablesImpl(it->second, expanding, inSubExpression);
+								  size += it->second.size;
+								  if (size > maxSize) {
+									  toBig = true;
+									  return node;
+								  }
+								  AstPtr result = substituteVariablesImpl(it->second.ast, expanding, inSubExpression, size, maxSize, toBig);
 								  expanding.erase(v.name);
 								  return result;
 							  },
@@ -77,26 +89,26 @@ namespace calc::core {
 			// definition inside an expression.
 			[&](const UnaryNode& u) -> AstPtr {
 				return makeUnary(u.op,
-								 substituteVariablesImpl(u.operand, expanding, true),
+								 substituteVariablesImpl(u.operand, expanding, true, size, maxSize, toBig),
 								 node->span);
 			},
 			[&](const BinaryNode& b) -> AstPtr {
 				return makeBinary(b.op,
-								  substituteVariablesImpl(b.lhs, expanding, true),
-								  substituteVariablesImpl(b.rhs, expanding, true),
+								  substituteVariablesImpl(b.lhs, expanding, true, size, maxSize, toBig),
+								  substituteVariablesImpl(b.rhs, expanding, true, size, maxSize, toBig),
 								  node->span);
 			},
 			[&](const CallNode& c) -> AstPtr {
 				std::vector<AstPtr> args;
 				args.reserve(c.args.size());
 				for (const AstPtr& a : c.args) {
-					args.push_back(substituteVariablesImpl(a, expanding, true));
+					args.push_back(substituteVariablesImpl(a, expanding, true, size, maxSize, toBig));
 				}
 				return makeCall(c.name, std::move(args), node->span);
 			},
 			[&](const EquationNode& e) -> AstPtr {
-				return makeEquation(substituteVariablesImpl(e.lhs, expanding, true),
-									substituteVariablesImpl(e.rhs, expanding, true),
+				return makeEquation(substituteVariablesImpl(e.lhs, expanding, true, size, maxSize, toBig),
+									substituteVariablesImpl(e.rhs, expanding, true, size, maxSize, toBig),
 									node->span);
 			},
 			}, node->value);
@@ -112,34 +124,38 @@ namespace calc::core {
 
 	std::vector<std::string> CalculatorCore::definedNames() const {
 		std::vector<std::string> out;
-		for (const auto& [name, ast] : m_impl->m_vars) out.push_back(name);
+		for (const auto& [name, var] : m_impl->m_vars) out.push_back(name);
 		return out;
 	}
 
 	std::optional<std::string> CalculatorCore::definitionOf(const std::string& name) const {
 		const auto it = m_impl->m_vars.find(name);
 		if (it == m_impl->m_vars.end()) return {};
-		return toString(*it->second);
+		return toString(*it->second.ast);
 	}
 
 	void CalculatorCore::clear() {
 		m_impl->m_vars.clear();
 	}
 
-	Result<CalculatorCore::EvalResult> CalculatorCore::evaluateLine(std::string_view input)
+	Result<CalculatorCore::EvalResult> CalculatorCore::evaluateLine(std::string_view input, std::size_t maxSize)
 	{
 		Result<std::vector<Token>> tokensResult = tokenize(input);
 		if (!tokensResult) {
 			return tokensResult.error();
 		}
 		std::vector<Token> tokens = std::move(tokensResult).value();
-		Result<ParsedExpression> parsed = parseExpression(tokens);
+		std::size_t size = 0;
+		Result<ParsedExpression> parsed = parseExpression(tokens, maxSize, size);
 		if (!parsed) {
 			return parsed.error();
 		}
 		ParsedExpression p = std::move(parsed).value();
-
-		AstPtr substituted = m_impl->substituteVariables(p.expr);
+		bool toBig = false;
+		AstPtr substituted = m_impl->substituteVariables(p.expr, size, maxSize, toBig);
+		if (toBig) {
+			return Diagnostic{ DiagCode::ExpressionTooLong, {tokens.front().span.begin, tokens.back().span.end}, std::to_string(maxSize) };
+		}
 		Result<AstPtr> simplifiedR = simplify(substituted);
 		if (!simplifiedR) {
 			return simplifiedR.error();
@@ -165,7 +181,7 @@ namespace calc::core {
 			if (freeVars.find(p.assignTo) != freeVars.end()) {
 				return Diagnostic{ DiagCode::SelfReference, p.expr->span, p.assignTo };
 			}
-			m_impl->m_vars[p.assignTo] = simplified;
+			m_impl->m_vars[p.assignTo] = { simplified, countNodes(*simplified) };
 			evalResult.assignedName = p.assignTo;
 		}
 		evalResult.canonical = toString(*simplified);
@@ -187,21 +203,21 @@ namespace calc::core {
 		if (it == m_impl->m_vars.end()) {
 			return Diagnostic{ DiagCode::NoSuchVariable, {}, req.equationName };
 		}
-		if (!std::get_if<EquationNode>(&it->second->value)) {
+		if (!std::get_if<EquationNode>(&it->second.ast->value)) {
 			return Diagnostic{ DiagCode::GraphTargetNotEquation, {} };
 		}
 
 		// Multiply both sides through by every denominator so vertical
 		// asymptotes don't show up as spurious sign-change pixels. See
 		// clearDenominators in Simplifier.h for the rationale and edge cases.
-		Result<AstPtr> equationR = clearDenominators(it->second);
+		Result<AstPtr> equationR = clearDenominators(it->second.ast);
 		if (!equationR) return std::move(equationR).error();
 		AstPtr equation = equationR.value();
 
 		// Every free variable must be one of the axes, and at least one axis
 		// must actually appear in the equation.
 		std::unordered_set<std::string> vars;
-		collectVariables(*it->second, vars);
+		collectVariables(*it->second.ast, vars);
 		for (const std::string& v : vars) {
 			if (axisSlots.find(v) == axisSlots.end()) {
 				return Diagnostic{ DiagCode::NonAxisVariable, {}, v };

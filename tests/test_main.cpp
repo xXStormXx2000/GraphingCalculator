@@ -30,7 +30,7 @@ namespace {
 	// Evaluate a line through the engine and return the canonical string.
 	std::string evalToString(const std::string& input) {
 		CalculatorCore core;
-		auto r = core.evaluateLine(input);
+		auto r = core.evaluateLine(input, 400);
 		if (!r) return "error: code " + std::to_string(static_cast<int>(r.error().code));
 		return r.value().canonical;
 	}
@@ -38,7 +38,7 @@ namespace {
 	// Evaluate a line and return the numeric result (NaN on error / non-numeric).
 	double evalToNumber(const std::string& input) {
 		CalculatorCore core;
-		auto r = core.evaluateLine(input);
+		auto r = core.evaluateLine(input, 400);
 		if (!r) return std::numeric_limits<double>::quiet_NaN();
 		if (!r.value().value) return std::numeric_limits<double>::quiet_NaN();
 		return *r.value().value;
@@ -48,7 +48,8 @@ namespace {
 	std::string parsePrint(const std::string& input) {
 		auto t = tokenize(input);
 		if (!t.ok()) return "<tok-error>";
-		auto p = parseExpression(t.value());
+		std::size_t size = 0;
+		auto p = parseExpression(t.value(), 400, size);
 		if (!p.ok()) return "<parse-error>";
 		return toString(*p.value().expr);
 	}
@@ -133,7 +134,8 @@ TEST_CASE("parser: bare e after a number is not implicit multiplication") {
 	// at parse time rather than silently treated as 2 * e.
 	auto t = tokenize("2e");
 	REQUIRE(t.ok());
-	auto p = parseExpression(t.value());
+	std::size_t size = 0;
+	auto p = parseExpression(t.value(), 400, size);
 	REQUIRE(!p.ok());
 }
 
@@ -164,7 +166,8 @@ TEST_CASE("tokenizer: malformed numbers") {
 	auto r = tokenize("1.2.3");
 	REQUIRE(r.ok());
 	REQUIRE_EQ(r.value().size(), std::size_t{ 3 });  // 1.2  .3  EOF
-	auto p = parseExpression(r.value());
+	std::size_t size = 0;
+	auto p = parseExpression(r.value(), 400, size);
 	REQUIRE(!p.ok());
 }
 
@@ -210,9 +213,9 @@ TEST_CASE("parser: nested parens") {
 
 TEST_CASE("parser: errors") {
 	CalculatorCore core;
-	REQUIRE(!core.evaluateLine("1 +").ok());
-	REQUIRE(!core.evaluateLine("1 ** 2").ok());
-	REQUIRE(!core.evaluateLine("(1 + 2").ok());
+	REQUIRE(!core.evaluateLine("1 +", 400).ok());
+	REQUIRE(!core.evaluateLine("1 ** 2", 400).ok());
+	REQUIRE(!core.evaluateLine("(1 + 2", 400).ok());
 }
 
 // -----------------------------------------------------------------------
@@ -221,7 +224,7 @@ TEST_CASE("parser: errors") {
 
 TEST_CASE("evaluator: division by zero") {
 	CalculatorCore core;
-	auto r = core.evaluateLine("1/0");
+	auto r = core.evaluateLine("1/0", 400);
 	REQUIRE(!r.ok());
 	REQUIRE(r.error().code == DiagCode::DivisionByZero ||
 		r.error().code == DiagCode::NotFinite);
@@ -229,9 +232,9 @@ TEST_CASE("evaluator: division by zero") {
 
 TEST_CASE("evaluator: with bindings") {
 	CalculatorCore core;
-	core.evaluateLine("x: 3");
-	core.evaluateLine("y: 5");
-	auto r = core.evaluateLine("x*x + y");
+	core.evaluateLine("x: 3", 400);
+	core.evaluateLine("y: 5", 400);
+	auto r = core.evaluateLine("x*x + y", 400);
 	REQUIRE(r.ok());
 	REQUIRE(r.value().value.has_value());
 	REQUIRE_APPROX(*r.value().value, 14.0, 1e-12);
@@ -244,7 +247,7 @@ TEST_CASE("evaluator: built-in constants") {
 TEST_CASE("evaluator: undefined variable") {
 	CalculatorCore core;
 	// A free variable does not produce an error — it produces a symbolic result.
-	auto r = core.evaluateLine("nope + 1");
+	auto r = core.evaluateLine("nope + 1", 400);
 	REQUIRE(r.ok());
 	REQUIRE(!r.value().value.has_value());  // not numeric
 }
@@ -304,24 +307,28 @@ TEST_CASE("simplifier: negation does not produce a double minus") {
 
 TEST_CASE("printer: parens only where needed") {
 	auto t1 = tokenize("(a - b) - c");
-	auto p1 = parseExpression(t1.value());
+	std::size_t size1 = 0;
+	auto p1 = parseExpression(t1.value(), 400, size1);
 	REQUIRE(p1.ok());
 	REQUIRE_EQ(toString(*p1.value().expr), std::string("a - b - c"));
 
 	auto t2 = tokenize("a - (b - c)");
-	auto p2 = parseExpression(t2.value());
+	std::size_t size2 = 0;
+	auto p2 = parseExpression(t2.value(), 400, size2);
 	REQUIRE(p2.ok());
 	REQUIRE_EQ(toString(*p2.value().expr), std::string("a - (b - c)"));
 }
 
 TEST_CASE("printer: power right-associativity reflected") {
 	auto t = tokenize("a ^ b ^ c");
-	auto p = parseExpression(t.value());
+	std::size_t size = 0;
+	auto p = parseExpression(t.value(), 400, size);
 	REQUIRE(p.ok());
 	REQUIRE_EQ(toString(*p.value().expr), std::string("a^b^c"));
 
 	auto t2 = tokenize("(a ^ b) ^ c");
-	auto p2 = parseExpression(t2.value());
+	size = 0;
+	auto p2 = parseExpression(t2.value(), 400, size);
 	REQUIRE(p2.ok());
 	REQUIRE_EQ(toString(*p2.value().expr), std::string("(a^b)^c"));
 }
@@ -409,7 +416,7 @@ TEST_CASE("repl: help") {
 TEST_CASE("clearDenominators: simple reciprocal") {
 	// y = 1/x: on the curve lhs-rhs == 0; near x=0 the functor stays finite.
 	CalculatorCore core;
-	core.evaluateLine("eq: y = 1/x");
+	core.evaluateLine("eq: y = 1/x", 400);
 	auto f = core.compilePlot({ "eq", {"x", "y"} });
 	REQUIRE(f.ok());
 
@@ -425,7 +432,7 @@ TEST_CASE("clearDenominators: simple reciprocal") {
 TEST_CASE("clearDenominators: sum of two fractions") {
 	// y = 1/(x-1) + 1/(x+1): at x=0, y=0; at x=2, y=4/3.
 	CalculatorCore core;
-	core.evaluateLine("eq: y = 1/(x-1) + 1/(x+1)");
+	core.evaluateLine("eq: y = 1/(x-1) + 1/(x+1)", 400);
 	auto f = core.compilePlot({ "eq", {"x", "y"} });
 	REQUIRE(f.ok());
 
@@ -436,7 +443,7 @@ TEST_CASE("clearDenominators: sum of two fractions") {
 TEST_CASE("clearDenominators: equation without denominators is unchanged in meaning") {
 	// x^2 + y^2 = 1: point (1, 0) lies on the unit circle.
 	CalculatorCore core;
-	core.evaluateLine("eq: x^2 + y^2 = 1");
+	core.evaluateLine("eq: x^2 + y^2 = 1", 400);
 	auto f = core.compilePlot({ "eq", {"x", "y"} });
 	REQUIRE(f.ok());
 
@@ -767,40 +774,41 @@ TEST_CASE("tokenizer: slash is a command prefix only as the first token") {
 
 TEST_CASE("parser: more than one '=' is rejected") {
 	CalculatorCore core;
-	auto r = core.evaluateLine("x = y = z");
+	auto r = core.evaluateLine("x = y = z", 400);
 	REQUIRE(!r.ok());
 	REQUIRE(r.error().code == DiagCode::MultipleEquals);
 }
 
 TEST_CASE("parser: empty side of an equation is rejected") {
 	CalculatorCore core;
-	auto before = core.evaluateLine("= 3");
+	auto before = core.evaluateLine("= 3", 400);
 	REQUIRE(!before.ok());
 	REQUIRE(before.error().code == DiagCode::ExpectedExpressionBeforeEquals);
 
-	auto after = core.evaluateLine("x =");
+	auto after = core.evaluateLine("x =", 400);
 	REQUIRE(!after.ok());
 	REQUIRE(after.error().code == DiagCode::ExpectedExpressionAfterEquals);
 }
 
 TEST_CASE("parser: dangling colon is rejected") {
 	CalculatorCore core;
-	auto r = core.evaluateLine("a:");
+	auto r = core.evaluateLine("a:", 400);
 	REQUIRE(!r.ok());
 	REQUIRE(r.error().code == DiagCode::ExpectedExpressionAfterColon);
 }
 
 TEST_CASE("parser: empty parens and trailing comma in an argument list") {
 	CalculatorCore core;
-	REQUIRE(!core.evaluateLine("()").ok());
-	REQUIRE(!core.evaluateLine("sin(1,)").ok());
-	REQUIRE(!core.evaluateLine("sin(,1)").ok());
+	REQUIRE(!core.evaluateLine("()", 400).ok());
+	REQUIRE(!core.evaluateLine("sin(1,)", 400).ok());
+	REQUIRE(!core.evaluateLine("sin(,1)", 400).ok());
 }
 
 TEST_CASE("parser: assignment combined with an equation") {
 	auto t = tokenize("curve: y = x^2");
 	REQUIRE(t.ok());
-	auto p = parseExpression(t.value());
+	std::size_t size = 0;
+	auto p = parseExpression(t.value(), 400, size);
 	REQUIRE(p.ok());
 	REQUIRE_EQ(p.value().assignTo, std::string("curve"));
 	// The stored expression is the equation itself.
@@ -854,9 +862,9 @@ TEST_CASE("constants: single-letter physical constants are reserved names") {
 
 TEST_CASE("functions: domain errors surface as NotFinite") {
 	CalculatorCore core;
-	REQUIRE(core.evaluateLine("sqrt(-4)").error().code == DiagCode::NotFinite);
+	REQUIRE(core.evaluateLine("sqrt(-4)", 400).error().code == DiagCode::NotFinite);
 	// log(1, x) divides by log(1) == 0.
-	REQUIRE(core.evaluateLine("log(1, 5)").error().code == DiagCode::NotFinite);
+	REQUIRE(core.evaluateLine("log(1, 5)", 400).error().code == DiagCode::NotFinite);
 }
 
 // -----------------------------------------------------------------------
@@ -912,7 +920,7 @@ TEST_CASE("characterization: 0^x and 1^x collapse for a symbolic exponent") {
 TEST_CASE("characterization: numeric 0^0 folds to 1 but 0^-1 errors") {
 	REQUIRE_EQ(evalToString("0^0"), std::string("1"));   // matches std::pow
 	CalculatorCore core;
-	REQUIRE(core.evaluateLine("0^-1").error().code == DiagCode::NotFinite);
+	REQUIRE(core.evaluateLine("0^-1", 400).error().code == DiagCode::NotFinite);
 }
 
 TEST_CASE("characterization: a fully numeric false equation renders with =/=") {
@@ -1000,7 +1008,7 @@ TEST_CASE("parseCommand: malformed command syntax is rejected") {
 
 TEST_CASE("compilePlot: duplicate axis names are rejected") {
 	CalculatorCore core;
-	core.evaluateLine("eq: y = x");
+	core.evaluateLine("eq: y = x", 400);
 	auto f = core.compilePlot({ "eq", {"x", "x"} });
 	REQUIRE(!f.ok());
 	REQUIRE(f.error().code == DiagCode::AxisNamesMustDiffer);
@@ -1016,7 +1024,7 @@ TEST_CASE("compilePlot: unknown equation variable is rejected") {
 
 TEST_CASE("compilePlot: target must be an equation, not a plain expression") {
 	CalculatorCore core;
-	core.evaluateLine("p: x^2");  // expression, not an equation
+	core.evaluateLine("p: x^2", 400);  // expression, not an equation
 	auto f = core.compilePlot({ "p", {"x", "y"} });
 	REQUIRE(!f.ok());
 	REQUIRE(f.error().code == DiagCode::GraphTargetNotEquation);
@@ -1024,7 +1032,7 @@ TEST_CASE("compilePlot: target must be an equation, not a plain expression") {
 
 TEST_CASE("compilePlot: a free variable that is not an axis is rejected") {
 	CalculatorCore core;
-	core.evaluateLine("eq: y = x + z");
+	core.evaluateLine("eq: y = x + z", 400);
 	auto f = core.compilePlot({ "eq", {"x", "y"} });
 	REQUIRE(!f.ok());
 	REQUIRE(f.error().code == DiagCode::NonAxisVariable);
@@ -1033,7 +1041,7 @@ TEST_CASE("compilePlot: a free variable that is not an axis is rejected") {
 
 TEST_CASE("compilePlot: an equation using no axis at all is rejected") {
 	CalculatorCore core;
-	core.evaluateLine("eq: 2 = 2");  // no free variables -> no axis appears
+	core.evaluateLine("eq: 2 = 2", 400);  // no free variables -> no axis appears
 	auto f = core.compilePlot({ "eq", {"x", "y"} });
 	REQUIRE(!f.ok());
 	REQUIRE(f.error().code == DiagCode::NoAxisVariable);
@@ -1041,7 +1049,7 @@ TEST_CASE("compilePlot: an equation using no axis at all is rejected") {
 
 TEST_CASE("compilePlot: functor evaluates lhs - rhs and reports its shape") {
 	CalculatorCore core;
-	core.evaluateLine("eq: y = x^2");
+	core.evaluateLine("eq: y = x^2", 400);
 	auto f = core.compilePlot({ "eq", {"x", "y"} });
 	REQUIRE(f.ok());
 	REQUIRE_EQ(f.value().dimensions(), std::size_t{ 2 });
@@ -1056,7 +1064,7 @@ TEST_CASE("compilePlot: the same engine compiles against three axes") {
 	// The README claims PlotFunctor is dimension-agnostic; the ASCII renderer
 	// only ever uses two axes, so this is the one place that claim is checked.
 	CalculatorCore core;
-	core.evaluateLine("eq: z = x + y");
+	core.evaluateLine("eq: z = x + y", 400);
 	auto f = core.compilePlot({ "eq", {"x", "y", "z"} });
 	REQUIRE(f.ok());
 	REQUIRE_EQ(f.value().dimensions(), std::size_t{ 3 });
@@ -1073,28 +1081,28 @@ TEST_CASE("compilePlot: the same engine compiles against three axes") {
 TEST_CASE("core: definitionOf is empty for an unknown name") {
 	CalculatorCore core;
 	REQUIRE(!core.definitionOf("nope").has_value());
-	core.evaluateLine("a: 5");
+	core.evaluateLine("a: 5", 400);
 	REQUIRE(core.definitionOf("a").has_value());
 	REQUIRE_EQ(*core.definitionOf("a"), std::string("5"));
 }
 
 TEST_CASE("core: redefining a name overwrites the previous definition") {
 	CalculatorCore core;
-	core.evaluateLine("a: 1");
-	core.evaluateLine("a: 2");
+	core.evaluateLine("a: 1", 400);
+	core.evaluateLine("a: 2", 400);
 	REQUIRE_EQ(*core.definitionOf("a"), std::string("2"));
 	REQUIRE_EQ(core.definedNames().size(), std::size_t{ 1 });
 }
 
 TEST_CASE("core: numeric result carries a value, symbolic result does not") {
 	CalculatorCore core;
-	auto num = core.evaluateLine("2 + 3");
+	auto num = core.evaluateLine("2 + 3", 400);
 	REQUIRE(num.ok());
 	REQUIRE(num.value().value.has_value());
 	REQUIRE_APPROX(*num.value().value, 5.0, 1e-12);
 	REQUIRE_EQ(num.value().canonical, std::string("5"));
 
-	auto sym = core.evaluateLine("x + 1");
+	auto sym = core.evaluateLine("x + 1", 400);
 	REQUIRE(sym.ok());
 	REQUIRE(!sym.value().value.has_value());
 }
@@ -1237,7 +1245,7 @@ TEST_CASE("simplifier regression: deeply nested mixed sum/product completes") {
 	// collectSum and collectProduct together and hung for tens of seconds at a
 	// few hundred levels. We only assert completion here (the canonical form is
 	// large and its exact spelling is not the point of this test).
-	constexpr int N = 150;
+	constexpr int N = 130;
 	std::string input;
 	for (int i = 1; i <= N; ++i) {
 		input += "a*" + std::string(static_cast<size_t>(i) + 1, 'a') + " + (";

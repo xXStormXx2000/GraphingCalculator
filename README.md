@@ -32,7 +32,7 @@ b
 >> a * b / a
 b
 >> 3*a + 2*a          # like-term coefficient combining
-a*5
+5*a
 >> a*a*b              # exponent combining
 a^2*b
 >> /help(PI)          # built-in constant help
@@ -49,6 +49,21 @@ Operators are `+ - * / ^` with the usual precedence; `^` is
 right-associative. Unary minus is allowed in any position (`2 + -3`,
 `2 * -x`, `f(-1)`). Assignment uses `:` — `a: 4*5` stores `20` under `a`,
 and stored names are inlined wherever they are used later.
+
+### Expression size limit
+
+Input is bounded by a maximum AST size (400 nodes by default) so that
+pathological input — deeply nested parentheses, very long operator chains —
+cannot exhaust the stack. Exceeding it is a normal diagnostic
+(`ExpressionTooLong`), not a crash. The bound applies after variables are
+inlined, so a chain of definitions that expands to an oversized tree is
+caught at the point of expansion, not only when typed.
+
+A stored definition is sized by its *simplified* form: `a: x + x + ... + x`
+collapses to `200*x` and counts as a handful of nodes, not the length of
+what you typed, so it inlines cheaply wherever it is used afterward. The
+limit is a `m_maxSize` field on the frontend, so a different consumer of the
+engine can raise or lower it; `evaluateLine` takes the bound as a parameter.
 
 ### Functions and constants
 

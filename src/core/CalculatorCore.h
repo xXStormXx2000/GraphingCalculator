@@ -65,7 +65,7 @@ namespace calc::core {
 			std::optional<double>      value;         // set if it reduced to a number
 			std::string                canonical;     // printed form (always set)
 		};
-		Result<EvalResult> evaluateLine(std::string_view input);
+		Result<EvalResult> evaluateLine(std::string_view input, std::size_t maxSize = 400);
 
 		// Variable session management (the durable state the engine owns).
 		std::vector<std::string> definedNames() const;

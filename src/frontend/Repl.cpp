@@ -190,7 +190,7 @@ namespace calc {
 	}
 
 	std::string Repl::handleExpression(const std::string& line) {
-		Result<CalculatorCore::EvalResult> r = m_core.evaluateLine(line);
+		Result<CalculatorCore::EvalResult> r = m_core.evaluateLine(line, m_maxSize);
 		if (!r) return formatDiagnostic(r.error(), line);
 		const CalculatorCore::EvalResult& res = r.value();
 		if (res.assignedName) return *res.assignedName + ": " + res.canonical;
@@ -242,7 +242,7 @@ namespace calc {
 			// (i.e. it's a built-in constant), then fall through to help text.
 			std::string prefix;
 			{
-				auto r = m_core.evaluateLine(topic);
+				auto r = m_core.evaluateLine(topic, m_maxSize);
 				if (r && r.value().value) {
 					prefix = topic + " = " + r.value().canonical + "\n  ";
 				}
@@ -269,7 +269,7 @@ namespace calc {
 											  "bound_x_min", "bound_x_max", "bound_y_min", "bound_y_max" };
 			double bounds[4];
 			for (std::size_t k = 0; k < 4; ++k) {
-				Result<CalculatorCore::EvalResult> r = m_core.evaluateLine(cmd.args[k + 2]);
+				Result<CalculatorCore::EvalResult> r = m_core.evaluateLine(cmd.args[k + 2], m_maxSize);
 				if (!r || !r.value().value) {
 					return commandError(
 						fillTemplate(ui("bound_not_number"), ui(boundKeys[k])));

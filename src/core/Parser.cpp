@@ -37,7 +37,7 @@ namespace calc::core {
 
 		class PrattParser {
 		public:
-			explicit PrattParser(const std::vector<Token>& tokens) : m_tokens(tokens) {}
+			explicit PrattParser(const std::vector<Token>& tokens, std::size_t maxSize, std::size_t& size) : m_tokens(tokens), m_maxSize(maxSize), m_size(size) {}
 
 			Result<AstPtr> parseTopLevel() {
 				Result<AstPtr> expr = parseExpr(0);
@@ -64,6 +64,9 @@ namespace calc::core {
 
 		private:
 			Result<AstPtr> parseExpr(int minBp) {
+				if (++m_size > m_maxSize) {
+					return Diagnostic{ DiagCode::ExpressionTooLong , { m_tokens.front().span.begin, m_tokens.back().span.end }, std::to_string(m_maxSize) };
+				}
 				Result<AstPtr> lhsResult = parsePrefix();
 				if (!lhsResult) return std::move(lhsResult).error();
 				AstPtr lhs = std::move(lhsResult).value();
@@ -152,12 +155,14 @@ namespace calc::core {
 			}
 
 			const std::vector<Token>& m_tokens;
+			const std::size_t m_maxSize;
+			std::size_t& m_size;
 			std::size_t m_pos = 0;
 		};
 
 	}  // namespace
 
-	Result<ParsedExpression> parseExpression(const std::vector<Token>& tokens) {
+	Result<ParsedExpression> parseExpression(const std::vector<Token>& tokens, std::size_t maxSize, std::size_t& size) {
 		if (tokens.empty() || tokens[0].kind == TokenKind::EndOfInput) {
 			return Diagnostic{ DiagCode::EmptyInput, {0, 0} };
 		}
@@ -189,7 +194,8 @@ namespace calc::core {
 			if (slice.empty() || slice[0].kind == TokenKind::EndOfInput) {
 				return Diagnostic{ DiagCode::ExpectedExpressionAfterColon, tokens.back().span };
 			}
-			PrattParser p(slice);
+			size = 0;
+			PrattParser p(slice, maxSize, size);
 			Result<AstPtr> expr = p.parseTopLevel();
 			if (!expr) return std::move(expr).error();
 			return ParsedExpression{ std::move(assignTo), std::move(expr).value() };
@@ -210,11 +216,12 @@ namespace calc::core {
 			return Diagnostic{ DiagCode::ExpectedExpressionAfterEquals, tokens[eqPos].span };
 		}
 
-		PrattParser lp(lhsTokens);
+		size = 1;
+		PrattParser lp(lhsTokens, maxSize, size);
 		Result<AstPtr> lhsAst = lp.parseTopLevel();
 		if (!lhsAst) return std::move(lhsAst).error();
 
-		PrattParser rp(rhsTokens);
+		PrattParser rp(rhsTokens, maxSize, size);
 		Result<AstPtr> rhsAst = rp.parseTopLevel();
 		if (!rhsAst) return std::move(rhsAst).error();
 

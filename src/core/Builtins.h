@@ -66,6 +66,12 @@ namespace calc::core {
 	void collectVariables(const AstNode& node,
 		std::unordered_set<std::string>& out);
 
+	// Count the total number of nodes in an AST. Used to size a stored
+	// definition by its *simplified* tree so the substitution budget charges
+	// the real number of nodes a later expansion will splice in, not the
+	// (usually larger) pre-simplification parse count.
+	std::size_t countNodes(const AstNode& node);
+
 }  // namespace calc::core
 
 #endif

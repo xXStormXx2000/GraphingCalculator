@@ -17,6 +17,7 @@
 2007 = expected expression after ':'
 2008 = expected expression before '='
 2009 = expected expression after '='
+2010 = expression was too big, exceeding the maximum allowed size of {}
 
 # Simplifier / numeric
 3000 = result is not a finite number

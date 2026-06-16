@@ -20,7 +20,7 @@ namespace calc::core {
 	// Parses a sequence of tokens (including the trailing EndOfInput) into an
 	// AST. Handles assignment, equations, all operator precedences, and unary
 	// minus.
-	Result<ParsedExpression> parseExpression(const std::vector<Token>& tokens);
+	Result<ParsedExpression> parseExpression(const std::vector<Token>& tokens, std::size_t maxSize, std::size_t& size);
 
 }  // namespace calc::core
 

@@ -27,6 +27,7 @@ namespace calc::core {
 		ExpectedExpressionAfterColon = 2007,
 		ExpectedExpressionBeforeEquals = 2008,
 		ExpectedExpressionAfterEquals = 2009,
+		ExpressionTooLong = 2010,  // exceeded max AST node count
 
 		// Simplifier / numeric ----------------------------------------------
 		NotFinite = 3000,  // result is not a finite number

@@ -54,6 +54,9 @@ namespace calc {
 		StringTable m_help;      // keyed by topic name
 		StringTable m_ui;        // keyed by stable UI-string id
 		StringTable m_commands;  // localized command name -> canonical id
+
+		//Max size of an input expression, in AST nodes, to prevent stack overflow.
+		std::size_t m_maxSize = 400;
 	};
 
 }  // namespace calc
