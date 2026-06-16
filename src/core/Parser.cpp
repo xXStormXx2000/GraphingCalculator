@@ -83,6 +83,9 @@ namespace calc::core {
 
 					SourceSpan combined{ lhs->span.begin, rhs->span.end };
 					lhs = makeBinary(bp->op, std::move(lhs), std::move(rhs), combined);
+					if (++m_size > m_maxSize) {
+						return Diagnostic{ DiagCode::ExpressionTooLong , { m_tokens.front().span.begin, m_tokens.back().span.end }, std::to_string(m_maxSize) };
+					}
 				}
 				return lhs;
 			}

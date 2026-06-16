@@ -1245,7 +1245,7 @@ TEST_CASE("simplifier regression: deeply nested mixed sum/product completes") {
 	// collectSum and collectProduct together and hung for tens of seconds at a
 	// few hundred levels. We only assert completion here (the canonical form is
 	// large and its exact spelling is not the point of this test).
-	constexpr int N = 130;
+	constexpr int N = 75;
 	std::string input;
 	for (int i = 1; i <= N; ++i) {
 		input += "a*" + std::string(static_cast<size_t>(i) + 1, 'a') + " + (";
