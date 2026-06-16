@@ -56,16 +56,23 @@ namespace calc::core {
 		// before they can flatten — the children must be in their final form
 		// before flattening inspects them (e.g. so a+a -> 2*a is visible as a
 		// product factor, not collected as an opaque sum).
-		std::optional<Diagnostic> simplifyChildren(BinaryNode& b) {
-			Result<AstPtr> lr = simplifyImpl(b.lhs);
-			if (!lr) return lr.error();
-			lr.value()->simplified = true;
-			b.lhs = lr.value();
-
-			Result<AstPtr> rr = simplifyImpl(b.rhs);
-			if (!rr) return rr.error();
-			rr.value()->simplified = true;
-			b.rhs = rr.value();
+		std::optional<Diagnostic> simplifyChildren(BinaryNode& b, BinaryOp op) {
+			BinaryOp op1 = op == BinaryOp::Add ? BinaryOp::Add : BinaryOp::Mul;
+			BinaryOp op2 = op == BinaryOp::Add ? BinaryOp::Sub : BinaryOp::Div;
+			auto* l = std::get_if<BinaryNode>(&b.lhs->value);
+			if ((l && l->op != op1 && l->op != op2) || !l) {
+				Result<AstPtr> lr = simplifyImpl(b.lhs);
+				if (!lr) return lr.error();
+				lr.value()->simplified = true;
+				b.lhs = lr.value();
+			}
+			auto* r = std::get_if<BinaryNode>(&b.rhs->value);
+			if ((r && r->op != op1 && r->op != op2) || !r) {
+				Result<AstPtr> rr = simplifyImpl(b.rhs);
+				if (!rr) return rr.error();
+				rr.value()->simplified = true;
+				b.rhs = rr.value();
+			}
 			return std::nullopt;
 		}
 
@@ -75,7 +82,7 @@ namespace calc::core {
 		// the flattened terms are appended to `out`.
 		std::optional<Diagnostic> collectSum(const AstPtr& node, TermSign outerSign, std::vector<SumTerm>& out) {
 			if (auto* b = std::get_if<BinaryNode>(&node->value)) {
-				if (auto err = simplifyChildren(*b)) return err;
+				if (auto err = simplifyChildren(*b, BinaryOp::Add)) return err;
 
 				if (b->op == BinaryOp::Add || b->op == BinaryOp::Sub) {
 					if (auto err = collectSum(b->lhs, outerSign, out)) return err;
@@ -102,7 +109,7 @@ namespace calc::core {
 		// a unary negate contributes a -1 factor.
 		std::optional<Diagnostic> collectProduct(const AstPtr& node, TermRole outerRole, std::vector<ProductTerm>& out) {
 			if (auto* b = std::get_if<BinaryNode>(&node->value)) {
-				if (auto err = simplifyChildren(*b)) return err;
+				if (auto err = simplifyChildren(*b, BinaryOp::Mul)) return err;
 
 				if (b->op == BinaryOp::Mul || b->op == BinaryOp::Div) {
 					if (auto err = collectProduct(b->lhs, outerRole, out)) return err;
@@ -189,8 +196,11 @@ namespace calc::core {
 			}
 
 			// Step 4: re-introduce the constant and collapse to the simplest form.
+			AstPtr newNode;
 			if (rebuilt.empty()) {
-				return makeNumber(constant, span);
+				newNode = makeNumber(constant, span);
+				newNode->simplified = true;
+				return newNode;
 			}
 			if (constant != 0.0) {
 				SumTerm t;
@@ -202,15 +212,16 @@ namespace calc::core {
 				return rebuilt[0].expr;
 			}
 			if (rebuilt.size() == 1 && rebuilt[0].sign == TermSign::Neg) {
-				return makeUnary(UnaryOp::Negate, rebuilt[0].expr, span);
+				newNode = makeUnary(UnaryOp::Negate, rebuilt[0].expr, span);
+				newNode->simplified = rebuilt[0].expr->simplified;
+				return newNode;
 			}
-			AstPtr newNode;
 			if (rebuilt[0].sign == TermSign::Pos) {
 				newNode = rebuilt[0].expr;
 			}
 			else {
 				newNode = makeUnary(UnaryOp::Negate, rebuilt[0].expr);
-				newNode->simplified = true;
+				newNode->simplified = rebuilt[0].expr->simplified;
 			}
 			for (size_t i = 1; i < rebuilt.size(); ++i) {
 				if (rebuilt[i].sign == TermSign::Pos) {
@@ -219,7 +230,7 @@ namespace calc::core {
 				else {
 					newNode = makeBinary(BinaryOp::Sub, newNode, rebuilt[i].expr);
 				}
-				newNode->simplified = true;
+				newNode->simplified = newNode->simplified && rebuilt[i].expr->simplified;
 			}
 			return newNode;
 		}
@@ -303,18 +314,23 @@ namespace calc::core {
 			}
 
 			// Multiplication by zero
+			AstPtr newNode;
 			if (constant == 0.0) {
 				bool hasFreeDenom = false;
 				for (const ProductTerm& t : rebuilt) {
 					if (t.role == TermRole::Denom) { hasFreeDenom = true; break; }
 				}
 				if (!hasFreeDenom) {
-					return makeNumber(0.0, span);
+					newNode = makeNumber(0.0, span);
+					newNode->simplified = true;
+					return newNode;
 				}
 			}
 
 			if (rebuilt.empty()) {
-				return makeNumber(constant, span);
+				newNode = makeNumber(constant, span);
+				newNode->simplified = true;
+				return newNode;
 			}
 			if (constant != 1.0) {
 				ProductTerm t{ TermRole::Numer, makeNumber(constant, span) };
@@ -323,13 +339,12 @@ namespace calc::core {
 			if (rebuilt.size() == 1 && rebuilt[0].role == TermRole::Numer) {
 				return rebuilt[0].expr;
 			}
-			AstPtr newNode;
 			if (rebuilt[0].role == TermRole::Numer) {
 				newNode = rebuilt[0].expr;
 			}
 			else {
 				newNode = makeBinary(BinaryOp::Div, makeNumber(1), rebuilt[0].expr);
-				newNode->simplified = true;
+				newNode->simplified = rebuilt[0].expr->simplified;
 			}
 			for (size_t i = 1; i < rebuilt.size(); ++i) {
 				if (rebuilt[i].role == TermRole::Numer) {
@@ -338,7 +353,7 @@ namespace calc::core {
 				else {
 					newNode = makeBinary(BinaryOp::Div, newNode, rebuilt[i].expr);
 				}
-				newNode->simplified = true;
+				newNode->simplified = newNode->simplified && rebuilt[i].expr->simplified;
 			}
 			return newNode;
 		}
