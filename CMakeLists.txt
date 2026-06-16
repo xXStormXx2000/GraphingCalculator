@@ -141,6 +141,12 @@ if(CALCULATOR_BUILD_TESTS)
         VERBATIM
     )
     add_test(NAME calc_tests COMMAND calc_tests)
+    # Bound the whole suite's runtime. The simplifier performance regression
+    # tests complete in well under a second when healthy; if a change ever
+    # reintroduces the exponential-simplification bug they would otherwise hang
+    # indefinitely. A timeout turns that hang into a clean "Timeout" failure
+    # instead of stalling CI until the runner-level limit kills it.
+    set_tests_properties(calc_tests PROPERTIES TIMEOUT 60)
 endif()  # CALCULATOR_BUILD_TESTS
 
 # ---- Install the application -------------------------------------------

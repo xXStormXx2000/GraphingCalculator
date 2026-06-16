@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -1137,4 +1139,142 @@ TEST_CASE("StringTable: keys, comments, blanks, trimming, and escapes") {
 	REQUIRE(!t.get("missing").has_value());
 
 	std::remove(path.c_str());
+}
+// ---------------------------------------------------------------------------
+// Regression: simplifier performance on large flat sums and products.
+//
+// A bug once made the simplifier re-descend already-canonical subtrees, so the
+// flatten/group cycle ran an exponential number of times: a sum of ~20 distinct
+// terms took tens of seconds, and ~50 terms never finished. The fix marks every
+// node the simplifier produces as canonical (AstNode::simplified) and early-outs
+// in simplifyImpl, collapsing the work back to roughly linear.
+//
+// These tests guard against that regression. They assert two things:
+//   1. Correctness  - the canonical result is exactly right (a wrong-answer
+//                     regression would change the string).
+//   2. Completion   - evaluation finishes well within a time budget (an
+//                     exponential regression would blow the budget; the old
+//                     code could not finish 50 terms in any practical time).
+//
+// The budgets are deliberately loose (seconds, not milliseconds) so the tests
+// stay reliable on slow or loaded CI machines while still being many orders of
+// magnitude below the old exponential behaviour.
+
+namespace {
+
+	// Run fn and return its wall-clock duration in seconds.
+	template <typename F>
+	double timeSeconds(F&& fn) {
+		const auto start = std::chrono::steady_clock::now();
+		fn();
+		const auto end = std::chrono::steady_clock::now();
+		return std::chrono::duration<double>(end - start).count();
+	}
+
+}  // namespace
+
+TEST_CASE("simplifier regression: large flat sum of distinct terms completes") {
+	// Build "v0 + v1 + ... + v199". Distinct terms, so nothing combines; the
+	// canonical form is the same terms in sorted order. With 200 terms this is
+	// trivial for the fixed code (well under a second) and impossible for the
+	// old exponential code.
+	constexpr int N = 200;
+	std::string input;
+	for (int i = 0; i < N; ++i) {
+		if (i) input += " + ";
+		input += "v" + std::to_string(i);
+	}
+
+	// Expected canonical form: variables sorted lexicographically (v0, v1, v10,
+	// v100, ... ) joined by " + ", matching the engine's ordering.
+	std::vector<std::string> names;
+	names.reserve(N);
+	for (int i = 0; i < N; ++i) names.push_back("v" + std::to_string(i));
+	std::sort(names.begin(), names.end());
+	std::string expected;
+	for (size_t i = 0; i < names.size(); ++i) {
+		if (i) expected += " + ";
+		expected += names[i];
+	}
+
+	std::string got;
+	const double secs = timeSeconds([&] { got = evalToString(input); });
+
+	REQUIRE_EQ(got, expected);
+	REQUIRE(secs < 5.0);
+}
+
+TEST_CASE("simplifier regression: large flat product of distinct factors completes") {
+	// Build "v0*v1*...*v199". Mirror of the sum case on the product path
+	// (simplifyProduct / collectProduct), which had the identical bug.
+	constexpr int N = 200;
+	std::string input;
+	for (int i = 0; i < N; ++i) {
+		if (i) input += "*";
+		input += "v" + std::to_string(i);
+	}
+
+	std::vector<std::string> names;
+	names.reserve(N);
+	for (int i = 0; i < N; ++i) names.push_back("v" + std::to_string(i));
+	std::sort(names.begin(), names.end());
+	std::string expected;
+	for (size_t i = 0; i < names.size(); ++i) {
+		if (i) expected += "*";
+		expected += names[i];
+	}
+
+	std::string got;
+	const double secs = timeSeconds([&] { got = evalToString(input); });
+
+	REQUIRE_EQ(got, expected);
+	REQUIRE(secs < 5.0);
+}
+
+TEST_CASE("simplifier regression: deeply nested mixed sum/product completes") {
+	// The original reproducer: a*aa + (a*aaa + (a*aaaa + ( ... ))). Each level
+	// nests a sum whose left operand is a distinct product. This stressed both
+	// collectSum and collectProduct together and hung for tens of seconds at a
+	// few hundred levels. We only assert completion here (the canonical form is
+	// large and its exact spelling is not the point of this test).
+	constexpr int N = 150;
+	std::string input;
+	for (int i = 1; i <= N; ++i) {
+		input += "a*" + std::string(static_cast<size_t>(i) + 1, 'a') + " + (";
+	}
+	input += "a";
+	input += std::string(static_cast<size_t>(N), ')');
+
+	std::string got;
+	const double secs = timeSeconds([&] { got = evalToString(input); });
+
+	// Must not be an error and must finish promptly.
+	REQUIRE(got.rfind("error:", 0) != 0);
+	REQUIRE(secs < 5.0);
+}
+
+TEST_CASE("simplifier regression: like-term combining still correct at scale") {
+	// Guards the *correctness* side of the fix: the memoization must not skip
+	// legitimate combining. Summing the same variable N times must fold to N*a,
+	// not leave N separate terms. (a + a + ... + a, 100 times -> 100*a.)
+	constexpr int N = 100;
+	std::string input;
+	for (int i = 0; i < N; ++i) {
+		if (i) input += " + ";
+		input += "a";
+	}
+
+	std::string got;
+	const double secs = timeSeconds([&] { got = evalToString(input); });
+
+	REQUIRE_EQ(got, std::string("100*a"));
+	REQUIRE(secs < 5.0);
+
+	// And the product mirror: a * a * ... * a, 100 times -> a^100.
+	std::string prodInput;
+	for (int i = 0; i < N; ++i) {
+		if (i) prodInput += "*";
+		prodInput += "a";
+	}
+	REQUIRE_EQ(evalToString(prodInput), std::string("a^100"));
 }

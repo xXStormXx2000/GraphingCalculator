@@ -62,6 +62,7 @@ namespace calc::core {
 			EquationNode
 		> value;
 		SourceSpan span;
+		bool simplified = false;
 	};
 
 	// Constructors as factory functions, so callers don't have to spell out

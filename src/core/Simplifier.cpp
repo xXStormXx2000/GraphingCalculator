@@ -59,10 +59,12 @@ namespace calc::core {
 		std::optional<Diagnostic> simplifyChildren(BinaryNode& b) {
 			Result<AstPtr> lr = simplifyImpl(b.lhs);
 			if (!lr) return lr.error();
+			lr.value()->simplified = true;
 			b.lhs = lr.value();
 
 			Result<AstPtr> rr = simplifyImpl(b.rhs);
 			if (!rr) return rr.error();
+			rr.value()->simplified = true;
 			b.rhs = rr.value();
 			return std::nullopt;
 		}
@@ -181,6 +183,7 @@ namespace calc::core {
 					AstPtr product = makeBinary(BinaryOp::Mul, std::move(expr), makeNumber(magnitude, span), span);
 					Result<AstPtr> spR = simplifyImpl(product);
 					if (!spR) return std::move(spR).error();
+					spR.value()->simplified = true;
 					rebuilt.push_back(SumTerm{ sign, spR.value() });
 				}
 			}
@@ -207,6 +210,7 @@ namespace calc::core {
 			}
 			else {
 				newNode = makeUnary(UnaryOp::Negate, rebuilt[0].expr);
+				newNode->simplified = true;
 			}
 			for (size_t i = 1; i < rebuilt.size(); ++i) {
 				if (rebuilt[i].sign == TermSign::Pos) {
@@ -215,6 +219,7 @@ namespace calc::core {
 				else {
 					newNode = makeBinary(BinaryOp::Sub, newNode, rebuilt[i].expr);
 				}
+				newNode->simplified = true;
 			}
 			return newNode;
 		}
@@ -292,6 +297,7 @@ namespace calc::core {
 						makeNumber(magnitude, span), span);
 					Result<AstPtr> spR = simplifyImpl(powered);
 					if (!spR) return std::move(spR).error();
+					spR.value()->simplified = true;
 					rebuilt.push_back(ProductTerm{ role, spR.value() });
 				}
 			}
@@ -323,6 +329,7 @@ namespace calc::core {
 			}
 			else {
 				newNode = makeBinary(BinaryOp::Div, makeNumber(1), rebuilt[0].expr);
+				newNode->simplified = true;
 			}
 			for (size_t i = 1; i < rebuilt.size(); ++i) {
 				if (rebuilt[i].role == TermRole::Numer) {
@@ -331,11 +338,13 @@ namespace calc::core {
 				else {
 					newNode = makeBinary(BinaryOp::Div, newNode, rebuilt[i].expr);
 				}
+				newNode->simplified = true;
 			}
 			return newNode;
 		}
 
 		Result<AstPtr> simplifyImpl(const AstPtr& node) {
+			if (node->simplified) return node;
 			return std::visit(overloaded{
 								  [&](const NumberNode& n) -> Result<AstPtr> {
 									  if (!std::isfinite(n.value)) return Diagnostic{DiagCode::NotFinite, node->span};
@@ -353,6 +362,7 @@ namespace calc::core {
 				[&](const UnaryNode& u) -> Result<AstPtr> {
 					Result<AstPtr> innerR = simplifyImpl(u.operand);
 					if (!innerR) return std::move(innerR).error();
+					innerR.value()->simplified = true;
 					AstPtr inner = innerR.value();
 					// Fold -literal.
 					double v;
@@ -380,9 +390,11 @@ namespace calc::core {
 					// ^ : not flattened (right-assoc, non-commutative).
 					Result<AstPtr> lhsR = simplifyImpl(b.lhs);
 					if (!lhsR) return std::move(lhsR).error();
+					lhsR.value()->simplified = true;
 					AstPtr lhs = lhsR.value();
 					Result<AstPtr> rhsR = simplifyImpl(b.rhs);
 					if (!rhsR) return std::move(rhsR).error();
+					rhsR.value()->simplified = true;
 					AstPtr rhs = rhsR.value();
 					double lv, rv;
 					const bool lConst = isNumber(*lhs, lv);
@@ -425,6 +437,7 @@ namespace calc::core {
 					for (const AstPtr& a : c.args) {
 						Result<AstPtr> sR = simplifyImpl(a);
 						if (!sR) return std::move(sR).error();
+						sR.value()->simplified = true;
 						AstPtr s = sR.value();
 						double v;
 						if (allNumeric && isNumber(*s, v)) {
@@ -449,8 +462,10 @@ return makeCall(c.name, std::move(args), node->span);
 [&](const EquationNode& e) -> Result<AstPtr> {
 	Result<AstPtr> lhs = simplifyImpl(e.lhs);
 	if (!lhs) return std::move(lhs).error();
+	lhs.value()->simplified = true;
 	Result<AstPtr> rhs = simplifyImpl(e.rhs);
 	if (!rhs) return std::move(rhs).error();
+	rhs.value()->simplified = true;
 	return makeEquation(lhs.value(), rhs.value(), node->span);
 },
 				}, node->value);
@@ -459,7 +474,10 @@ return makeCall(c.name, std::move(args), node->span);
 	}  // namespace
 
 	Result<AstPtr> simplify(const AstPtr& node) {
-		return simplifyImpl(node);
+		Result<AstPtr> R = simplifyImpl(node);
+		if (!R) return std::move(R).error();
+		R.value()->simplified = true;
+		return R.value();
 	}
 
 	// ----- clearDenominators ---------------------------------------------------
