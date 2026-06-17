@@ -1060,6 +1060,57 @@ TEST_CASE("compilePlot: functor evaluates lhs - rhs and reports its shape") {
 	REQUIRE_APPROX(f.value()({ 2.0, 5.0 }), 1.0, 1e-12);   // y - x^2 = 5 - 4
 }
 
+TEST_CASE("calls: wrong argument count is rejected") {
+	// Every builtin must be called with its exact arity. These previously
+	// slipped through and could reach the bytecode compiler, crashing on a
+	// stack under/overflow when graphed.
+	CalculatorCore core;
+	auto tooMany = core.evaluateLine("sin(1, 2, 3)", 400);
+	REQUIRE(!tooMany.ok());
+	REQUIRE(tooMany.error().code == DiagCode::WrongArity);
+
+	auto zeroArgs = core.evaluateLine("sin()", 400);
+	REQUIRE(!zeroArgs.ok());
+	REQUIRE(zeroArgs.error().code == DiagCode::WrongArity);
+
+	auto tooFew = core.evaluateLine("log(2)", 400);  // log takes (base, x)
+	REQUIRE(!tooFew.ok());
+	REQUIRE(tooFew.error().code == DiagCode::WrongArity);
+}
+
+TEST_CASE("calls: unknown function names are rejected") {
+	CalculatorCore core;
+	auto sym = core.evaluateLine("foo(x)", 400);  // symbolic, still rejected
+	REQUIRE(!sym.ok());
+	REQUIRE(sym.error().code == DiagCode::UnknownFunction);
+
+	auto num = core.evaluateLine("nosuchfn(1)", 400);
+	REQUIRE(!num.ok());
+	REQUIRE(num.error().code == DiagCode::UnknownFunction);
+}
+
+TEST_CASE("calls: correctly-formed calls still work") {
+	REQUIRE_EQ(evalToString("sin(x)"), "sin(x)");          // symbolic preserved
+	REQUIRE_APPROX(evalToNumber("log(2, 8)"), 3.0, 1e-12);  // numeric fold
+	REQUIRE_APPROX(evalToNumber("root(2, 9)"), 3.0, 1e-12);
+	REQUIRE_APPROX(evalToNumber("abs(-5)"), 5.0, 1e-12);
+}
+
+TEST_CASE("calls: a bad-arity call can never reach the grapher") {
+	// Regression: graphing "y = sin() + x" used to abort with std::out_of_range
+	// because the zero-arg sin emitted a Sin op against an empty value stack.
+	// The definition must now be rejected, so it is never stored to graph.
+	CalculatorCore core;
+	auto def = core.evaluateLine("eq: y = sin() + x", 400);
+	REQUIRE(!def.ok());
+	REQUIRE(def.error().code == DiagCode::WrongArity);
+
+	// Since the definition was rejected, no "eq" exists to compile.
+	auto f = core.compilePlot({ "eq", {"x", "y"} });
+	REQUIRE(!f.ok());
+	REQUIRE(f.error().code == DiagCode::NoSuchVariable);
+}
+
 TEST_CASE("compilePlot: the same engine compiles against three axes") {
 	// The README claims PlotFunctor is dimension-agnostic; the ASCII renderer
 	// only ever uses two axes, so this is the one place that claim is checked.

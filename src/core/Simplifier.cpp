@@ -465,22 +465,27 @@ namespace calc::core {
 						if (allNumeric && isNumber(*s, v)) {
 							nums.push_back(v);
 						}
-else {
- allNumeric = false;
-}
-args.push_back(std::move(s));
-}
-if (allNumeric) {
-	if (auto it = functions().find(c.name); it != functions().end()) {
-		if (it->second.arity == args.size()) {
-			double num = it->second.fn(nums);
-			if (!std::isfinite(num)) return Diagnostic{DiagCode::NotFinite, node->span};
-			return makeNumber(num, node->span);
-		}
-	}
-}
-return makeCall(c.name, std::move(args), node->span);
-},
+						else {
+							allNumeric = false;
+						}
+						args.push_back(std::move(s));
+					}
+					// Every call must name an implemented function and supply the
+					// exact number of arguments it takes.
+					auto fnIt = functions().find(c.name);
+					if (fnIt == functions().end()) {
+						return Diagnostic{ DiagCode::UnknownFunction, node->span, c.name };
+					}
+					if (fnIt->second.arity != args.size()) {
+						return Diagnostic{ DiagCode::WrongArity, node->span, c.name };
+					}
+					if (allNumeric) {
+						double num = fnIt->second.fn(nums);
+						if (!std::isfinite(num)) return Diagnostic{ DiagCode::NotFinite, node->span };
+						return makeNumber(num, node->span);
+					}
+					return makeCall(c.name, std::move(args), node->span);
+				},
 [&](const EquationNode& e) -> Result<AstPtr> {
 	Result<AstPtr> lhs = simplifyImpl(e.lhs);
 	if (!lhs) return std::move(lhs).error();

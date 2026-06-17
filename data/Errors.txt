@@ -22,6 +22,8 @@
 # Simplifier / numeric
 3000 = result is not a finite number
 3001 = division by zero
+3002 = unknown function '{}'
+3003 = wrong number of arguments to '{}'
 
 # Command parsing
 4000 = command must start with '/'

@@ -32,6 +32,8 @@ namespace calc::core {
 		// Simplifier / numeric ----------------------------------------------
 		NotFinite = 3000,  // result is not a finite number
 		DivisionByZero = 3001,
+		UnknownFunction = 3002,  // detail: the function name
+		WrongArity = 3003,  // detail: the function name
 
 		// Command parsing (CalculatorCore::parseCommand) --------------------
 		CommandMustStartWithSlash = 4000,
