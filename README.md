@@ -249,8 +249,9 @@ and a convenient starting point to copy or adapt. (Note `CalculatorCore({})` is
 ambiguous between the move and table constructors; spell an empty set as
 `CalculatorCore(calc::core::CalculatorCore::ConstantTable{})`.)
 
-Because the engine emits codes rather than text, supplying that wording is the
-one piece of presentation a consumer must provide. `DiagCode.h` (installed, so
+#### Diagnostics
+The engine emits diagnostic codes, never text, so the wording is the one 
+piece of presentation a consumer must supply. `DiagCode.h` (installed, so
 you already have it) enumerates every code the engine can emit; `data/Errors.txt`
 is the reference mapping from each code to a sample English message, with `{}`
 marking where the detail payload is substituted. It is not needed at runtime by
