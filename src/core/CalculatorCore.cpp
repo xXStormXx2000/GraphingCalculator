@@ -40,22 +40,22 @@ namespace calc::core {
 			std::size_t size = 0;
 		};
 		std::unordered_map<std::string, ASTVar> m_vars;
-		AstPtr substituteVariables(const AstPtr& node, std::size_t& size, std::size_t maxSize, bool& toBig) const;
+		AstPtr substituteVariables(const AstPtr& node, std::size_t& size, std::size_t maxSize, bool& tooBig) const;
 		AstPtr substituteVariablesImpl(const AstPtr& node,
 			std::unordered_set<std::string>& expanding,
-			bool inSubExpression, std::size_t& size, std::size_t maxSize, bool& toBig) const;
+			bool inSubExpression, std::size_t& size, std::size_t maxSize, bool& tooBig) const;
 	};
 
-	AstPtr CalculatorCore::Impl::substituteVariables(const AstPtr& node, std::size_t& size, std::size_t maxSize, bool& toBig) const {
+	AstPtr CalculatorCore::Impl::substituteVariables(const AstPtr& node, std::size_t& size, std::size_t maxSize, bool& tooBig) const {
 		std::unordered_set<std::string> expanding;
-		toBig = false;
-		return substituteVariablesImpl(node, expanding, /*inSubExpression=*/false, size, maxSize, toBig);
+		tooBig = false;
+		return substituteVariablesImpl(node, expanding, /*inSubExpression=*/false, size, maxSize, tooBig);
 	}
 
 	AstPtr CalculatorCore::Impl::substituteVariablesImpl(const AstPtr& node,
 		std::unordered_set<std::string>& expanding,
-		bool inSubExpression, std::size_t& size, std::size_t maxSize, bool& toBig) const {
-		if (toBig) return node;  // short-circuit if we've already blown the size budget
+		bool inSubExpression, std::size_t& size, std::size_t maxSize, bool& tooBig) const {
+		if (tooBig) return node;  // short-circuit if we've already blown the size budget
 		return std::visit(overloaded{
 							  [&](const NumberNode&) -> AstPtr { return node; },
 							  [&](const VariableNode& v) -> AstPtr {
@@ -77,10 +77,10 @@ namespace calc::core {
 								  // so it inherits the current sub-expression context.
 								  size += it->second.size;
 								  if (size > maxSize) {
-									  toBig = true;
+									  tooBig = true;
 									  return node;
 								  }
-								  AstPtr result = substituteVariablesImpl(it->second.ast, expanding, inSubExpression, size, maxSize, toBig);
+								  AstPtr result = substituteVariablesImpl(it->second.ast, expanding, inSubExpression, size, maxSize, tooBig);
 								  expanding.erase(v.name);
 								  return result;
 							  },
@@ -89,26 +89,26 @@ namespace calc::core {
 			// definition inside an expression.
 			[&](const UnaryNode& u) -> AstPtr {
 				return makeUnary(u.op,
-								 substituteVariablesImpl(u.operand, expanding, true, size, maxSize, toBig),
+								 substituteVariablesImpl(u.operand, expanding, true, size, maxSize, tooBig),
 								 node->span);
 			},
 			[&](const BinaryNode& b) -> AstPtr {
 				return makeBinary(b.op,
-								  substituteVariablesImpl(b.lhs, expanding, true, size, maxSize, toBig),
-								  substituteVariablesImpl(b.rhs, expanding, true, size, maxSize, toBig),
+								  substituteVariablesImpl(b.lhs, expanding, true, size, maxSize, tooBig),
+								  substituteVariablesImpl(b.rhs, expanding, true, size, maxSize, tooBig),
 								  node->span);
 			},
 			[&](const CallNode& c) -> AstPtr {
 				std::vector<AstPtr> args;
 				args.reserve(c.args.size());
 				for (const AstPtr& a : c.args) {
-					args.push_back(substituteVariablesImpl(a, expanding, true, size, maxSize, toBig));
+					args.push_back(substituteVariablesImpl(a, expanding, true, size, maxSize, tooBig));
 				}
 				return makeCall(c.name, std::move(args), node->span);
 			},
 			[&](const EquationNode& e) -> AstPtr {
-				return makeEquation(substituteVariablesImpl(e.lhs, expanding, true, size, maxSize, toBig),
-									substituteVariablesImpl(e.rhs, expanding, true, size, maxSize, toBig),
+				return makeEquation(substituteVariablesImpl(e.lhs, expanding, true, size, maxSize, tooBig),
+									substituteVariablesImpl(e.rhs, expanding, true, size, maxSize, tooBig),
 									node->span);
 			},
 			}, node->value);
@@ -151,9 +151,9 @@ namespace calc::core {
 			return parsed.error();
 		}
 		ParsedExpression p = std::move(parsed).value();
-		bool toBig = false;
-		AstPtr substituted = m_impl->substituteVariables(p.expr, size, maxSize, toBig);
-		if (toBig) {
+		bool tooBig = false;
+		AstPtr substituted = m_impl->substituteVariables(p.expr, size, maxSize, tooBig);
+		if (tooBig) {
 			return Diagnostic{ DiagCode::ExpressionTooLong, {tokens.front().span.begin, tokens.back().span.end}, std::to_string(maxSize) };
 		}
 		Result<AstPtr> simplifiedR = simplify(substituted);
