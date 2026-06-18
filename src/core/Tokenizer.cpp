@@ -1,7 +1,20 @@
 #include "Tokenizer.h"
 
 #include <cctype>
-#include <charconv>
+#include <locale>
+#include <sstream>
+#include <string>
+
+// Number tokens are converted with a locale-pinned istringstream rather than
+// std::from_chars. The floating-point from_chars overload is the last piece of
+// <charconv> to land and is still deleted on some libc++ versions, so using it
+// means a toolchain-detection #if (and __cpp_lib_to_chars can't be trusted for
+// it -- libc++ defines that macro while deleting the overload). from_chars
+// would only buy parse speed, which is irrelevant for interactive REPL input,
+// so a single portable path is the better trade: one branch, no macro, nothing
+// bleeding-edge to break on the next compiler. (The printer keeps std::to_chars
+// because there it provides shortest-round-trip output, a property the
+// canonicalization key depends on -- and to_chars is more widely supported.)
 
 namespace calc::core {
 
@@ -58,17 +71,16 @@ namespace calc::core {
 				}
 				std::string_view text = input.substr(start, i - start);
 				double value = 0.0;
-				// from_chars on doubles is supported in C++17 onward; libstdc++
-				// shipped a complete implementation a few releases back so this
-				// is safe on modern toolchains.
-				const char* first = text.data();
-				const char* last = first + text.size();
-				// Structured binding: std::from_chars returns
-				// std::from_chars_result, which has fields `ptr` (where parsing
-				// stopped) and `ec` (error code). `auto` is required for the
-				// structured binding syntax to work.
-				auto [ptr, ec] = std::from_chars(first, last, value);
-				if (ec != std::errc{} || ptr != last) {
+				// Convert the scanned numeric token to a double. Its lexical
+				// shape was already validated above, so this only converts.
+				// Pin the classic locale so a comma-decimal system locale can't
+				// truncate "3.14" at the dot, and require the whole token to be
+				// consumed (eof) with no failure.
+				std::istringstream iss{ std::string(text) };
+				iss.imbue(std::locale::classic());
+				iss >> value;
+				const bool parsedOk = (!iss.fail() && iss.eof());
+				if (!parsedOk) {
 					return Diagnostic{ DiagCode::MalformedNumber, {start, i} };
 				}
 				out.push_back(Token{ TokenKind::Number, std::string(text), value, {start, i} });
