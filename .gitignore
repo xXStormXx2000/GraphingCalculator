@@ -1,7 +1,25 @@
-﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
-################################################################################
+﻿# Build output
+/build/
+/out/
+**/CMakeCache.txt
+**/CMakeFiles/
+**/cmake_install.cmake
+**/CTestTestfile.cmake
+**/Testing/
 
-/.vs
-/out/build/x64-Debug
-/build
+# CMake presets' generated user file
+CMakeUserPresets.json
+
+# Compile database (when generated in-tree)
+/compile_commands.json
+
+# Visual Studio / VS Code
+/.vs/
+/.vscode/
+*.user
+
+# Editor / OS cruft
+*.swp
+*~
+.DS_Store
+.cache/

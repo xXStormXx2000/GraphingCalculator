@@ -6,7 +6,64 @@ on:
   pull_request:
 
 jobs:
-  linux:
+  # Build and test across the platforms and configs the project claims to
+  # support (the CMake presets advertise Windows/MSVC and Release builds, so
+  # CI must actually exercise them). C++20 features like std::to_chars for
+  # floating point vary by toolchain version, so spanning compilers is what
+  # turns "should be portable" into "demonstrably builds everywhere".
+  build-and-test:
+    name: ${{ matrix.os }} / ${{ matrix.build_type }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      # On Windows the Visual Studio generator is used (no Ninja needed); it
+      # is multi-config, so the build type is selected at build time.
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        run: cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --build build
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build build --config ${{ matrix.build_type }}
+
+      - name: Test (Unix)
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build --output-on-failure -C ${{ matrix.build_type }}
+
+  # AddressSanitizer + UndefinedBehaviorSanitizer over the full suite. The
+  # 4000-expression property test is an ideal sanitizer workload: it exercises
+  # the recursive-descent parser, the shared_ptr AST, the simplifier, and the
+  # bytecode VM across a wide range of shapes, so a clean run is strong evidence
+  # the depth/finiteness invariants hold at runtime, not just on paper.
+  sanitizers:
+    name: sanitizers (asan+ubsan)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,10 +72,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Configure
-        run: cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=Debug
+        run: >
+          cmake -B build -S . -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
 
       - name: Build
         run: cmake --build build
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: abort_on_error=1
