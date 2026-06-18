@@ -9,6 +9,14 @@
 
 namespace calc {
 
+	// The constant set the console program injects into its engine: the math
+	// and physics constants the calculator has always recognized, spelled bare
+	// (no sigil) for terse entry. Physical values are CODATA 2018 / SI 2019.
+	// The engine itself ships with no constants; this is the frontend's choice
+	// of which to provide and how to name them. Callers who want a different
+	// set (or none) construct their CalculatorCore with their own table.
+	core::CalculatorCore::ConstantTable defaultConstants();
+
 	class Repl {
 	public:
 		Repl(std::istream& in, std::ostream& out);

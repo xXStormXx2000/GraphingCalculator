@@ -48,7 +48,7 @@ namespace calc::core {
 		// --- Simplification core --------------------------------------------------
 
 
-		Result<AstPtr> simplifyImpl(const AstPtr& node);
+		Result<AstPtr> simplifyImpl(const ConstantTable& constants, const AstPtr& node);
 
 		// Simplify both children of a binary node in place. Returns a diagnostic
 		// if either child fails, otherwise nullopt. Pulling this out removes the
@@ -56,19 +56,19 @@ namespace calc::core {
 		// before they can flatten — the children must be in their final form
 		// before flattening inspects them (e.g. so a+a -> 2*a is visible as a
 		// product factor, not collected as an opaque sum).
-		std::optional<Diagnostic> simplifyChildren(BinaryNode& b, BinaryOp op) {
+		std::optional<Diagnostic> simplifyChildren(const ConstantTable& constants, BinaryNode& b, BinaryOp op) {
 			BinaryOp op1 = op == BinaryOp::Add ? BinaryOp::Add : BinaryOp::Mul;
 			BinaryOp op2 = op == BinaryOp::Add ? BinaryOp::Sub : BinaryOp::Div;
 			auto* l = std::get_if<BinaryNode>(&b.lhs->value);
 			if ((l && l->op != op1 && l->op != op2) || !l) {
-				Result<AstPtr> lr = simplifyImpl(b.lhs);
+				Result<AstPtr> lr = simplifyImpl(constants, b.lhs);
 				if (!lr) return lr.error();
 				lr.value()->simplified = true;
 				b.lhs = lr.value();
 			}
 			auto* r = std::get_if<BinaryNode>(&b.rhs->value);
 			if ((r && r->op != op1 && r->op != op2) || !r) {
-				Result<AstPtr> rr = simplifyImpl(b.rhs);
+				Result<AstPtr> rr = simplifyImpl(constants, b.rhs);
 				if (!rr) return rr.error();
 				rr.value()->simplified = true;
 				b.rhs = rr.value();
@@ -80,31 +80,31 @@ namespace calc::core {
 		// during descent so that like-term grouping keys are computed over
 		// canonical sub-trees. Returns a diagnostic on failure, else nullopt;
 		// the flattened terms are appended to `out`.
-		std::optional<Diagnostic> collectSum(const AstPtr& node, TermSign outerSign, std::vector<SumTerm>& out) {
+		std::optional<Diagnostic> collectSum(const ConstantTable& constants, const AstPtr& node, TermSign outerSign, std::vector<SumTerm>& out) {
 			if (auto* b = std::get_if<BinaryNode>(&node->value)) {
-				if (auto err = simplifyChildren(*b, BinaryOp::Add)) return err;
+				if (auto err = simplifyChildren(constants, *b, BinaryOp::Add)) return err;
 
 				if (b->op == BinaryOp::Add || b->op == BinaryOp::Sub) {
-					if (auto err = collectSum(b->lhs, outerSign, out)) return err;
+					if (auto err = collectSum(constants, b->lhs, outerSign, out)) return err;
 					// `-` flips the sign of everything on its right.
 					const TermSign rhsSign =
 						(b->op == BinaryOp::Sub)
 						? (outerSign == TermSign::Pos ? TermSign::Neg : TermSign::Pos)
 						: outerSign;
-					return collectSum(b->rhs, rhsSign, out);
+					return collectSum(constants, b->rhs, rhsSign, out);
 				}
 				if (b->op == BinaryOp::Mul) {
 					const NumberNode* numNode = std::get_if<NumberNode>(&b->rhs->value);
 					if (numNode && numNode->value == -1.) {
 						const TermSign flipped = (outerSign == TermSign::Pos) ? TermSign::Neg : TermSign::Pos;
-						return collectSum(b->lhs, flipped, out);
+						return collectSum(constants, b->lhs, flipped, out);
 					}
 				}
 			}
 			if (auto* u = std::get_if<UnaryNode>(&node->value)) {
 				if (u->op == UnaryOp::Negate) {
 					const TermSign flipped = (outerSign == TermSign::Pos) ? TermSign::Neg : TermSign::Pos;
-					return collectSum(u->operand, flipped, out);
+					return collectSum(constants, u->operand, flipped, out);
 				}
 			}
 			out.push_back(SumTerm{ outerSign, node });
@@ -114,22 +114,22 @@ namespace calc::core {
 		// Flatten a `*`/`/` chain into numerator/denominator factors. Mirror of
 		// collectSum: `/` flips numer<->denom the way `-` flips the sum sign, and
 		// a unary negate contributes a -1 factor.
-		std::optional<Diagnostic> collectProduct(const AstPtr& node, TermRole outerRole, std::vector<ProductTerm>& out) {
+		std::optional<Diagnostic> collectProduct(const ConstantTable& constants, const AstPtr& node, TermRole outerRole, std::vector<ProductTerm>& out) {
 			if (auto* b = std::get_if<BinaryNode>(&node->value)) {
-				if (auto err = simplifyChildren(*b, BinaryOp::Mul)) return err;
+				if (auto err = simplifyChildren(constants, *b, BinaryOp::Mul)) return err;
 
 				if (b->op == BinaryOp::Mul || b->op == BinaryOp::Div) {
-					if (auto err = collectProduct(b->lhs, outerRole, out)) return err;
+					if (auto err = collectProduct(constants, b->lhs, outerRole, out)) return err;
 					const TermRole rhsRole =
 						(b->op == BinaryOp::Div)
 						? (outerRole == TermRole::Numer ? TermRole::Denom : TermRole::Numer)
 						: outerRole;
-					return collectProduct(b->rhs, rhsRole, out);
+					return collectProduct(constants, b->rhs, rhsRole, out);
 				}
 			}
 			if (auto* u = std::get_if<UnaryNode>(&node->value)) {
 				if (u->op == UnaryOp::Negate) {
-					if (auto err = collectProduct(u->operand, outerRole, out)) return err;
+					if (auto err = collectProduct(constants, u->operand, outerRole, out)) return err;
 					out.push_back(ProductTerm{ outerRole, makeNumber(-1.0, node->span) });
 					return std::nullopt;
 				}
@@ -144,7 +144,7 @@ namespace calc::core {
 		//   a + a + b - a   collapses to    a + b   (count of a is +1, b is +1)
 		//   a + a + b       collapses to    2*a + b (count of a is +2)
 		//   a - a           collapses to    0       (count of a is 0, removed)
-		Result<AstPtr> simplifySum(std::vector<SumTerm> terms, SourceSpan span) {
+		Result<AstPtr> simplifySum(const ConstantTable& constants, std::vector<SumTerm> terms, SourceSpan span) {
 			// Step 1: fold all numeric literals into one running total.
 			double constant = 0.0;
 			std::vector<SumTerm> nonConst;
@@ -195,7 +195,7 @@ namespace calc::core {
 					// Wrap the term in (count * expr), then re-simplify so an
 					// inner numeric coefficient folds: e.g. (2 * (2*a)) -> 4*a.
 					AstPtr product = makeBinary(BinaryOp::Mul, std::move(expr), makeNumber(magnitude, span), span);
-					Result<AstPtr> spR = simplifyImpl(product);
+					Result<AstPtr> spR = simplifyImpl(constants, product);
 					if (!spR) return std::move(spR).error();
 					spR.value()->simplified = true;
 					rebuilt.push_back(SumTerm{ sign, spR.value() });
@@ -248,7 +248,7 @@ namespace calc::core {
 		//   a * a           collapses to    a^2     (exp of a is +2)
 		//   a / a           collapses to    1       (exp of a is 0, removed)
 		//   a / a / a       collapses to    1/a     (exp of a is -1)
-		Result<AstPtr> simplifyProduct(std::vector<ProductTerm> terms, SourceSpan span) {
+		Result<AstPtr> simplifyProduct(const ConstantTable& constants, std::vector<ProductTerm> terms, SourceSpan span) {
 			// Fold numeric literals.
 			double numerProduct = 1.0;
 			double denomProduct = 1.0;
@@ -313,7 +313,7 @@ namespace calc::core {
 					// (a^m)^n -> a^(m*n) rule fires (e.g. (x^2)^2 -> x^4).
 					AstPtr powered = makeBinary(BinaryOp::Pow, std::move(expr),
 						makeNumber(magnitude, span), span);
-					Result<AstPtr> spR = simplifyImpl(powered);
+					Result<AstPtr> spR = simplifyImpl(constants, powered);
 					if (!spR) return std::move(spR).error();
 					spR.value()->simplified = true;
 					rebuilt.push_back(ProductTerm{ role, spR.value() });
@@ -365,24 +365,24 @@ namespace calc::core {
 			return newNode;
 		}
 
-		Result<AstPtr> simplifyImpl(const AstPtr& node) {
+		Result<AstPtr> simplifyImpl(const ConstantTable& constants, const AstPtr& node) {
 			if (node->simplified) return node;
 			return std::visit(overloaded{
-				[&](const NumberNode& n) -> Result<AstPtr> {
-					if (!std::isfinite(n.value)) return Diagnostic{DiagCode::NotFinite, node->span};
-					return node;
-				},
-				[&](const VariableNode& v) -> Result<AstPtr> {
+								  [&](const NumberNode& n) -> Result<AstPtr> {
+									  if (!std::isfinite(n.value)) return Diagnostic{DiagCode::NotFinite, node->span};
+									  return node;
+								  },
+								  [&](const VariableNode& v) -> Result<AstPtr> {
 					// `auto` for iterators returned by .find() throughout this file:
 					// the full iterator type adds nothing the .find() call doesn't
 					// already convey.
-					if (auto it = constants().find(v.name); it != constants().end()) {
-						return makeNumber(it->second.value, node->span);
+					if (auto it = constants.find(v.name); it != constants.end()) {
+						return makeNumber(it->second, node->span);
 					}
 					return node;
 				},
 				[&](const UnaryNode& u) -> Result<AstPtr> {
-					Result<AstPtr> innerR = simplifyImpl(u.operand);
+					Result<AstPtr> innerR = simplifyImpl(constants, u.operand);
 					if (!innerR) return std::move(innerR).error();
 					innerR.value()->simplified = true;
 					AstPtr inner = innerR.value();
@@ -393,28 +393,28 @@ namespace calc::core {
 					}
 					// Canonicalize negation to a single internal form
 					std::vector<ProductTerm> terms;
-					if (auto err = collectProduct(inner, TermRole::Numer, terms)) return *err;
+					if (auto err = collectProduct(constants, inner, TermRole::Numer, terms)) return *err;
 					terms.push_back(ProductTerm{ TermRole::Numer, makeNumber(-1.0, node->span) });
-					return simplifyProduct(std::move(terms), node->span);
+					return simplifyProduct(constants, std::move(terms), node->span);
 				},
 				[&](const BinaryNode& b) -> Result<AstPtr> {
 					// For + - * / we flatten into n-ary form.
 					if (b.op == BinaryOp::Add || b.op == BinaryOp::Sub) {
 						std::vector<SumTerm> terms;
-						if (auto err = collectSum(node, TermSign::Pos, terms)) return *err;
-						return simplifySum(std::move(terms), node->span);
+						if (auto err = collectSum(constants, node, TermSign::Pos, terms)) return *err;
+						return simplifySum(constants, std::move(terms), node->span);
 					}
 					if (b.op == BinaryOp::Mul || b.op == BinaryOp::Div) {
 						std::vector<ProductTerm> terms;
-						if (auto err = collectProduct(node, TermRole::Numer, terms)) return *err;
-						return simplifyProduct(std::move(terms), node->span);
+						if (auto err = collectProduct(constants, node, TermRole::Numer, terms)) return *err;
+						return simplifyProduct(constants, std::move(terms), node->span);
 					}
 					// ^ : not flattened (right-assoc, non-commutative).
-					Result<AstPtr> lhsR = simplifyImpl(b.lhs);
+					Result<AstPtr> lhsR = simplifyImpl(constants, b.lhs);
 					if (!lhsR) return std::move(lhsR).error();
 					lhsR.value()->simplified = true;
 					AstPtr lhs = lhsR.value();
-					Result<AstPtr> rhsR = simplifyImpl(b.rhs);
+					Result<AstPtr> rhsR = simplifyImpl(constants, b.rhs);
 					if (!rhsR) return std::move(rhsR).error();
 					rhsR.value()->simplified = true;
 					AstPtr rhs = rhsR.value();
@@ -457,7 +457,7 @@ namespace calc::core {
 					bool allNumeric = true;
 					std::vector<double> nums;
 					for (const AstPtr& a : c.args) {
-						Result<AstPtr> sR = simplifyImpl(a);
+						Result<AstPtr> sR = simplifyImpl(constants, a);
 						if (!sR) return std::move(sR).error();
 						sR.value()->simplified = true;
 						AstPtr s = sR.value();
@@ -486,22 +486,22 @@ namespace calc::core {
 					}
 					return makeCall(c.name, std::move(args), node->span);
 				},
-				[&](const EquationNode& e) -> Result<AstPtr> {
-					Result<AstPtr> lhs = simplifyImpl(e.lhs);
-					if (!lhs) return std::move(lhs).error();
-					lhs.value()->simplified = true;
-					Result<AstPtr> rhs = simplifyImpl(e.rhs);
-					if (!rhs) return std::move(rhs).error();
-					rhs.value()->simplified = true;
-					return makeEquation(lhs.value(), rhs.value(), node->span);
-				},
+[&](const EquationNode& e) -> Result<AstPtr> {
+	Result<AstPtr> lhs = simplifyImpl(constants, e.lhs);
+	if (!lhs) return std::move(lhs).error();
+	lhs.value()->simplified = true;
+	Result<AstPtr> rhs = simplifyImpl(constants, e.rhs);
+	if (!rhs) return std::move(rhs).error();
+	rhs.value()->simplified = true;
+	return makeEquation(lhs.value(), rhs.value(), node->span);
+},
 				}, node->value);
 		}
 
 	}  // namespace
 
-	Result<AstPtr> simplify(const AstPtr& node) {
-		Result<AstPtr> R = simplifyImpl(node);
+	Result<AstPtr> simplify(const ConstantTable& constants, const AstPtr& node) {
+		Result<AstPtr> R = simplifyImpl(constants, node);
 		if (!R) return std::move(R).error();
 		R.value()->simplified = true;
 		return R.value();
@@ -621,7 +621,7 @@ namespace calc::core {
 
 	}  // namespace
 
-	Result<AstPtr> clearDenominators(const AstPtr& equationNode) {
+	Result<AstPtr> clearDenominators(const ConstantTable& constants, const AstPtr& equationNode) {
 		const auto* eq = std::get_if<EquationNode>(&equationNode->value);
 		if (!eq) return equationNode;  // not an equation; nothing to do
 
@@ -630,9 +630,9 @@ namespace calc::core {
 
 		// Cross-multiply: L_n * R_d = R_n * L_d. Then run simplify on each side
 		// so the resulting trees are tidy (e.g. so 1*x*1 collapses to x).
-		Result<AstPtr> newLhs = simplify(makeMul(L.numer, R.denom, equationNode->span));
+		Result<AstPtr> newLhs = simplify(constants, makeMul(L.numer, R.denom, equationNode->span));
 		if (!newLhs) return std::move(newLhs).error();
-		Result<AstPtr> newRhs = simplify(makeMul(R.numer, L.denom, equationNode->span));
+		Result<AstPtr> newRhs = simplify(constants, makeMul(R.numer, L.denom, equationNode->span));
 		if (!newRhs) return std::move(newRhs).error();
 		return makeEquation(newLhs.value(), newRhs.value(), equationNode->span);
 	}

@@ -50,33 +50,18 @@ namespace calc::core {
 		return table;
 	}
 
-	struct ConstantDef {
-		double value = 0.0;
-	};
+	// A set of named constants the engine treats as reserved: each name folds
+	// to its value during simplification and cannot be redefined by the user.
+	// The engine ships with NONE built in -- which constants exist, and how
+	// they are spelled, is a caller decision supplied at construction. (The
+	// console frontend injects a physics/math set; see calc::defaultConstants
+	// in the frontend.) This keeps the engine neutral on both questions.
+	using ConstantTable = std::unordered_map<std::string, double>;
 
-	// Mathematical and physical constants. Values are CODATA 2018 / SI 2019
-	// where applicable.
-	inline const std::unordered_map<std::string, ConstantDef>& constants() {
-		static const std::unordered_map<std::string, ConstantDef> table = {
-																		   {"PI",   {3.141592653589793238462643383279502884}},
-																		   {"tau",  {6.283185307179586476925286766559005768}},
-																		   {"e",    {2.718281828459045235360287471352662498}},
-																		   {"phi",  {1.618033988749894848204586834365638118}},
-																		   {"G",    {6.67430e-11}},
-																		   {"c",    {299792458.0}},
-																		   {"h",    {6.62607015e-34}},
-																		   {"hbar", {1.054571817e-34}},
-																		   {"k_B",  {1.380649e-23}},
-																		   {"N_A",  {6.02214076e23}},
-																		   {"R",    {8.314462618}},
-																		   {"q_e",  {1.602176634e-19}},
-		};
-		return table;
-	}
-
-	// Collect all variable names referenced in an AST that are not built-in
-	// constants. Used to find free variables in expressions and equations.
+	// Collect all variable names referenced in an AST that are not constants
+	// in `constants`. Used to find free variables in expressions and equations.
 	void collectVariables(const AstNode& node,
+		const ConstantTable& constants,
 		std::unordered_set<std::string>& out);
 
 	// Count the total number of nodes in an AST. Used to size a stored

@@ -72,7 +72,15 @@ Functions: `sin cos tan asin acos atan sqrt abs log root`, where
 `root(n, x)` is the n-th root of `x`.
 
 Constants: `PI tau e phi G c h hbar k_B N_A R q_e`, with physical
-constants using CODATA 2018 / SI 2019 values.
+constants using CODATA 2018 / SI 2019 values. They are spelled bare (no
+sigil), so single letters like `c`, `e`, `h`, `G`, and `R` resolve to
+their constant values and are not available as variable names.
+
+These constants are not built into the engine — they are supplied by the
+console frontend (`calc::defaultConstants()`) and injected when the engine
+is constructed. The engine itself ships with no constants; a different
+consumer chooses its own set, its own values, and its own spelling, or
+none at all. See "Using the engine as a library" below.
 
 ### Commands
 
@@ -121,7 +129,7 @@ sees the AST or any other internal type.
 | `Tokenizer.{h,cpp}` | character-class scanner |
 | `Parser.{h,cpp}` | Pratt parser; precedence, unary minus, right-associative `^` |
 | `Ast.h` | `std::variant` of node kinds plus factory helpers |
-| `Builtins.{h,cpp}` | function and constant tables, free-variable collection |
+| `Builtins.{h,cpp}` | function table, `ConstantTable` type, free-variable collection |
 | `Simplifier.{h,cpp}` | constant folding, identities, cancellation, denominator clearing |
 | `Printer.{h,cpp}` | precedence-aware rendering back to a string |
 | `VMbytecode.{h,cpp}` | compiles an AST to stack-machine bytecode and runs it |
@@ -201,7 +209,7 @@ A minimal consumer:
 #include <iostream>
 
 int main() {
-    calc::core::CalculatorCore engine;
+    calc::core::CalculatorCore engine;  // no constants
     auto result = engine.evaluateLine("3*a + 2*a");
     if (result) {
         std::cout << result.value().canonical << '\n';  // prints: 5*a
@@ -214,6 +222,32 @@ printed form, and `value` additionally holds a number when the expression
 reduced to one (no free variables remained). On failure the `Result` carries a
 `Diagnostic` — a `DiagCode` plus an optional detail payload — leaving any
 user-facing wording to the caller.
+
+#### Constants
+
+The engine recognizes no constants by default: every identifier is a free
+variable, so a default-constructed engine treats `PI` or `c` as ordinary
+symbols. Which constants exist, what they equal, and how they are spelled is a
+caller decision, passed to the constructor as a `ConstantTable` (a
+`std::unordered_map<std::string, double>`). Each name in it folds to its value
+during simplification and is reserved — it cannot be redefined.
+
+```cpp
+calc::core::CalculatorCore engine({
+    {"PI", 3.14159265358979},
+    {"e",  2.71828182845905},
+});
+engine.evaluateLine("PI + 1");   // -> 4.14159...; PI is no longer a variable
+```
+
+This keeps the engine neutral on a question that is really presentation: the
+console frontend likes bare names (`c` is the speed of light), but a consumer
+doing finance or working in another unit system can supply its own set — or
+pass an empty table to keep every letter available as a variable. The frontend's
+`calc::defaultConstants()` is the math/physics set the console program injects,
+and a convenient starting point to copy or adapt. (Note `CalculatorCore({})` is
+ambiguous between the move and table constructors; spell an empty set as
+`CalculatorCore(calc::core::CalculatorCore::ConstantTable{})`.)
 
 Because the engine emits codes rather than text, supplying that wording is the
 one piece of presentation a consumer must provide. `DiagCode.h` (installed, so

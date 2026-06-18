@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "Types.h"   // SourceSpan, Diagnostic (key-based), Result<T>
@@ -50,7 +51,17 @@ namespace calc::core {
 	// for building plot functors. No iostream, no text rendering, no language.
 	class CalculatorCore {
 	public:
-		CalculatorCore();
+		// The set of named constants this engine recognizes. Each name folds to
+		// its value during simplification and is reserved (cannot be redefined).
+		// The engine ships with none: the caller supplies the set, choosing both
+		// which constants exist and how they are spelled. A bare-default-
+		// constructed engine has no constants at all, so every identifier is a
+		// free variable. (See calc::defaultConstants() in the frontend for the
+		// console program's physics/math set.)
+		using ConstantTable = std::unordered_map<std::string, double>;
+
+		CalculatorCore();  // no constants
+		explicit CalculatorCore(ConstantTable constants);
 		~CalculatorCore();
 		CalculatorCore(CalculatorCore&&) noexcept;
 		CalculatorCore& operator=(CalculatorCore&&) noexcept;

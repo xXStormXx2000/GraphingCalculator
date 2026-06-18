@@ -39,6 +39,7 @@ namespace calc::core {
 			AstPtr ast;
 			std::size_t size = 0;
 		};
+		ConstantTable m_constants;
 		std::unordered_map<std::string, ASTVar> m_vars;
 		AstPtr substituteVariables(const AstPtr& node, std::size_t& size, std::size_t maxSize, bool& tooBig) const;
 		AstPtr substituteVariablesImpl(const AstPtr& node,
@@ -118,6 +119,11 @@ namespace calc::core {
 		m_impl = std::make_unique<Impl>();
 	}
 
+	CalculatorCore::CalculatorCore(ConstantTable constants) {
+		m_impl = std::make_unique<Impl>();
+		m_impl->m_constants = std::move(constants);
+	}
+
 	CalculatorCore::~CalculatorCore() = default;
 	CalculatorCore::CalculatorCore(CalculatorCore&&) noexcept = default;
 	CalculatorCore& CalculatorCore::operator=(CalculatorCore&&) noexcept = default;
@@ -156,7 +162,7 @@ namespace calc::core {
 		if (tooBig) {
 			return Diagnostic{ DiagCode::ExpressionTooLong, {tokens.front().span.begin, tokens.back().span.end}, std::to_string(maxSize) };
 		}
-		Result<AstPtr> simplifiedR = simplify(substituted);
+		Result<AstPtr> simplifiedR = simplify(m_impl->m_constants, substituted);
 		if (!simplifiedR) {
 			return simplifiedR.error();
 		}
@@ -168,16 +174,16 @@ namespace calc::core {
 			evalResult.value = n->value;
 		}
 		if (p.assignTo != "") {
-			// Reject attempts to shadow a built-in constant. Constant names
-			// are reserved: resolution always substitutes the constant's
-			// value, so a stored definition under the same name could never
-			// be reached and would silently never apply.
-			if (constants().find(p.assignTo) != constants().end()) {
+			// Reject attempts to shadow a constant. Constant names are reserved:
+			// resolution always substitutes the constant's value, so a stored
+			// definition under the same name could never be reached and would
+			// silently never apply.
+			if (m_impl->m_constants.find(p.assignTo) != m_impl->m_constants.end()) {
 				return Diagnostic{ DiagCode::ConstantReassignment, p.expr->span, p.assignTo };
 			}
 			// Reject self-referential definitions.
 			std::unordered_set<std::string> freeVars;
-			collectVariables(*simplified, freeVars);
+			collectVariables(*simplified, m_impl->m_constants, freeVars);
 			if (freeVars.find(p.assignTo) != freeVars.end()) {
 				return Diagnostic{ DiagCode::SelfReference, p.expr->span, p.assignTo };
 			}
@@ -216,7 +222,7 @@ namespace calc::core {
 		// doc in CalculatorCore.h for why the two forms aren't interchangeable.
 		AstPtr equation = it->second.ast;
 		if (req.clearDenominators) {
-			Result<AstPtr> equationR = clearDenominators(it->second.ast);
+			Result<AstPtr> equationR = clearDenominators(m_impl->m_constants, it->second.ast);
 			if (!equationR) return std::move(equationR).error();
 			equation = equationR.value();
 		}
@@ -224,7 +230,7 @@ namespace calc::core {
 		// Every free variable must be one of the axes, and at least one axis
 		// must actually appear in the equation.
 		std::unordered_set<std::string> vars;
-		collectVariables(*it->second.ast, vars);
+		collectVariables(*it->second.ast, m_impl->m_constants, vars);
 		for (const std::string& v : vars) {
 			if (axisSlots.find(v) == axisSlots.end()) {
 				return Diagnostic{ DiagCode::NonAxisVariable, {}, v };

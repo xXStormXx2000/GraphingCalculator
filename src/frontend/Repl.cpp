@@ -150,7 +150,25 @@ namespace calc {
 		return m_help.get(topic);
 	}
 
-	Repl::Repl(std::istream& in, std::ostream& out) : m_in(in), m_out(out) {
+	core::CalculatorCore::ConstantTable defaultConstants() {
+		return {
+			{"pi",   3.141592653589793238462643383279502884},
+			{"tau",  6.283185307179586476925286766559005768},
+			{"e",    2.718281828459045235360287471352662498},
+			{"phi",  1.618033988749894848204586834365638118},
+			{"G",    6.67430e-11},
+			{"c",    299792458.0},
+			{"h",    6.62607015e-34},
+			{"hbar", 1.054571817e-34},
+			{"k_B",  1.380649e-23},
+			{"N_A",  6.02214076e23},
+			{"R",    8.314462618},
+			{"q_e",  1.602176634e-19},
+		};
+	}
+
+	Repl::Repl(std::istream& in, std::ostream& out)
+		: m_in(in), m_out(out), m_core(defaultConstants()) {
 		// Presentation strings live in external data files so they can be
 		// edited or localized without rebuilding. Resolve them relative to the
 		// executable's own location, not the current working directory, so the

@@ -27,9 +27,18 @@ using namespace calc::core;
 
 namespace {
 
+	// The engine no longer ships with built-in constants; the caller supplies
+	// them. The console frontend injects calc::defaultConstants(); the tests
+	// use that same set so constant-dependent expressions (PI, e, ...) behave
+	// as the shipped program does. A few tests that specifically check the
+	// no-constants case construct a bare CalculatorCore{} instead.
+	CalculatorCore makeCore() {
+		return CalculatorCore(defaultConstants());
+	}
+
 	// Evaluate a line through the engine and return the canonical string.
 	std::string evalToString(const std::string& input) {
-		CalculatorCore core;
+		CalculatorCore core = makeCore();
 		auto r = core.evaluateLine(input, 400);
 		if (!r) return "error: code " + std::to_string(static_cast<int>(r.error().code));
 		return r.value().canonical;
@@ -37,7 +46,7 @@ namespace {
 
 	// Evaluate a line and return the numeric result (NaN on error / non-numeric).
 	double evalToNumber(const std::string& input) {
-		CalculatorCore core;
+		CalculatorCore core = makeCore();
 		auto r = core.evaluateLine(input, 400);
 		if (!r) return std::numeric_limits<double>::quiet_NaN();
 		if (!r.value().value) return std::numeric_limits<double>::quiet_NaN();
@@ -575,7 +584,7 @@ TEST_CASE("repl: built-in constants cannot be reassigned") {
 	// Names in the constant table are reserved; assigning to one is an error
 	// rather than a silently-shadowed (and unreachable) definition.
 	REQUIRE(r.processLine("c: 5").find("reserved constant") != std::string::npos);
-	REQUIRE(r.processLine("PI: 3").find("reserved constant") != std::string::npos);
+	REQUIRE(r.processLine("pi: 3").find("reserved constant") != std::string::npos);
 	REQUIRE(r.processLine("h: 1").find("reserved constant") != std::string::npos);
 	// A non-constant single letter still works.
 	REQUIRE_EQ(r.processLine("d: 5"), std::string("d: 5"));
@@ -658,8 +667,8 @@ TEST_CASE("printer: negation of sum keeps parens") {
 TEST_CASE("repl: help on a built-in constant shows value and description") {
 	std::stringstream in, out;
 	Repl r(in, out);
-	auto resp = r.processLine("/help(PI)");
-	REQUIRE(resp.find("PI") != std::string::npos);
+	auto resp = r.processLine("/help(pi)");
+	REQUIRE(resp.find("pi") != std::string::npos);
 	REQUIRE(resp.find("3.14") != std::string::npos);
 	REQUIRE(resp.find("circumference") != std::string::npos);
 }
