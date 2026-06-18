@@ -111,6 +111,52 @@ namespace calc {
 			return tmpl.substr(0, pos) + detail + tmpl.substr(pos + 2);
 		}
 
+		std::string prettifyNumbers(const std::string& input) {
+			struct NumberSpan
+			{
+				std::size_t start = 0;
+				std::size_t end = 0;
+				double value = 0.0;
+			};
+			std::vector<NumberSpan> numberSpans;
+			for (int i = 0; i < input.size(); ++i) {
+				if (std::isdigit(static_cast<unsigned char>(input[i]))) {
+					std::size_t start = i;
+					while (i < input.size() && 
+						(std::isdigit(static_cast<unsigned char>(input[i])) 
+						|| input[i] == '.'
+						|| input[i] == 'e' || input[i] == 'E'
+						|| input[i] == '+' || input[i] == '-')) {
+						++i;
+					}
+					std::size_t end = i;
+					if(input[i] != 'e' && input[i] != 'E' && input[i] != '+' && input[i] != '-') {
+						double value = 0.0;
+						std::istringstream iss{ input.substr(start, end - start) };
+						iss.imbue(std::locale::classic());
+						iss >> value;
+						if (iss.fail()) continue;  // skip malformed numbers;
+						numberSpans.push_back({ start, end, value });
+					}
+				}
+			}
+			std::string output;
+			int numPos = 0;
+			for (std::size_t j = 0; j < input.size(); ++j) {
+				if (numPos < numberSpans.size() && j >= numberSpans[numPos].start) {
+					char buf[64];
+					std::snprintf(buf, sizeof(buf), "%.7g", numberSpans[numPos].value);
+					output += std::string(buf);
+					j = numberSpans[numPos].end - 1;
+					++numPos;
+				}
+				else {
+					output += input[j];
+				}
+			}
+			return output;
+		}
+
 	}  // namespace
 
 	std::string Repl::ui(const std::string& key) const {
@@ -211,8 +257,8 @@ namespace calc {
 		Result<CalculatorCore::EvalResult> r = m_core.evaluateLine(line, m_maxSize);
 		if (!r) return formatDiagnostic(r.error(), line);
 		const CalculatorCore::EvalResult& res = r.value();
-		if (res.assignedName) return *res.assignedName + ": " + res.canonical;
-		return res.canonical;
+		if (res.assignedName) return *res.assignedName + ": " + prettifyNumbers(res.canonical);
+		return prettifyNumbers(res.canonical);
 	}
 
 	std::string Repl::handleCommand(const std::string& source) {
