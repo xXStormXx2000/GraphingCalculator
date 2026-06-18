@@ -1,5 +1,7 @@
 # Graphing Calculator
 
+[![CI](https://github.com/xXStormXx2000/GraphingCalculator/actions/workflows/ci.yml/badge.svg)](https://github.com/xXStormXx2000/GraphingCalculator/actions/workflows/ci.yml)
+
 A command-line graphing calculator with a REPL, ASCII plots, variable
 storage, and algebraic simplification across symbolic terms. Written in
 C++20 with no external dependencies.
