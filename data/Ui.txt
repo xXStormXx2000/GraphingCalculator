@@ -6,7 +6,7 @@ error_prefix = error:
 prompt_prefix = >>
 
 # Banner shown at startup
-banner = #########################################\n####                                 ####\n####   Storm's graphing calculator   ####\n####                                 ####\n#########################################\n\nOperators: +  -  *  /  ^  :\nFunctions: sin cos tan asin acos atan sqrt abs log root\nConstants: PI tau e phi G c h hbar k_B N_A R q_e\nCommands:  /graph  /list  /clear  /help  /exit\nType '/help(topic)' for details.\n
+banner = #########################################\n####                                 ####\n####   Storm's graphing calculator   ####\n####                                 ####\n#########################################\n\nOperators: +  -  *  /  ^  :\nFunctions: sin cos tan asin acos atan sqrt abs log root\nConstants: pi tau e phi G c h hbar k_B N_A R q_e\nCommands:  /graph  /list  /clear  /help  /exit\nType '/help(topic)' for details.\n
 
 # Command responses
 quitting = Quitting
