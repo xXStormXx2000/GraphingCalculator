@@ -1,8 +1,7 @@
 #include "Printer.h"
 
+#include <charconv>
 #include <cmath>
-#include <cstdio>
-#include <sstream>
 #include <string>
 #include <variant>
 
@@ -135,18 +134,9 @@ namespace calc::core {
 		if (std::isnan(v)) return "NaN";
 		if (std::isinf(v)) return v < 0 ? "-inf" : "inf";
 
-		// Integer fast path.
-		if (v == std::floor(v) && std::abs(v) < 1e16) {
-			std::ostringstream oss;
-			oss.precision(0);
-			oss << std::fixed << v;
-			return oss.str();
-		}
-
-		// General case: use a reasonable precision then strip trailing zeros.
 		char buf[64];
-		std::snprintf(buf, sizeof(buf), "%.10g", v);
-		return std::string(buf);
+		const std::to_chars_result r = std::to_chars(buf, buf + sizeof(buf), v);
+		return std::string(buf, r.ptr);
 	}
 
 	std::string toString(const AstNode& node) {
