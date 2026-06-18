@@ -127,7 +127,8 @@ if(CALCULATOR_BUILD_TESTS)
     add_executable(calc_tests
         tests/test_main.cpp
         tests/test_framework.h
-    )
+        tests/expr_generator.h 
+        tests/test_property.cpp)
     # Tests exercise both layers, so they link the frontend (which pulls in
     # the engine transitively).
     target_compile_options(calc_tests PRIVATE ${CALC_WARNING_FLAGS})
