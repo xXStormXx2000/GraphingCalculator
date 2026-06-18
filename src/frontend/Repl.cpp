@@ -112,36 +112,37 @@ namespace calc {
 		}
 
 		std::string prettifyNumbers(const std::string& input) {
-			struct NumberSpan
-			{
-				std::size_t start = 0;
-				std::size_t end = 0;
-				double value = 0.0;
-			};
+			struct NumberSpan { std::size_t start = 0; std::size_t end = 0; double value = 0.0; };
 			std::vector<NumberSpan> numberSpans;
-			for (int i = 0; i < input.size(); ++i) {
+			for (std::size_t i = 0; i < input.size(); ++i) {
 				if (std::isdigit(static_cast<unsigned char>(input[i]))) {
 					std::size_t start = i;
-					while (i < input.size() && 
-						(std::isdigit(static_cast<unsigned char>(input[i])) 
-						|| input[i] == '.'
-						|| input[i] == 'e' || input[i] == 'E'
-						|| input[i] == '+' || input[i] == '-')) {
+					// digits and at most the usual fractional/exponent shape; a sign
+					// is consumed ONLY right after e/E, never as a bare operator.
+					while (i < input.size() &&
+						(std::isdigit(static_cast<unsigned char>(input[i])) || input[i] == '.')) {
 						++i;
 					}
-					std::size_t end = i;
-					if(input[i] != 'e' && input[i] != 'E' && input[i] != '+' && input[i] != '-') {
-						double value = 0.0;
-						std::istringstream iss{ input.substr(start, end - start) };
-						iss.imbue(std::locale::classic());
-						iss >> value;
-						if (iss.fail()) continue;  // skip malformed numbers;
-						numberSpans.push_back({ start, end, value });
+					if (i < input.size() && (input[i] == 'e' || input[i] == 'E')) {
+						std::size_t j = i + 1;
+						if (j < input.size() && (input[j] == '+' || input[j] == '-')) ++j;
+						if (j < input.size() && std::isdigit(static_cast<unsigned char>(input[j]))) {
+							i = j;
+							while (i < input.size() && std::isdigit(static_cast<unsigned char>(input[i]))) ++i;
+						}
 					}
+					std::size_t end = i;
+					double value = 0.0;
+					std::istringstream iss{ input.substr(start, end - start) };
+					iss.imbue(std::locale::classic());
+					iss >> value;
+					if (iss.fail()) { --i; continue; }
+					numberSpans.push_back({ start, end, value });
+					--i; // for-loop will ++ ; we stopped one past the number
 				}
 			}
 			std::string output;
-			int numPos = 0;
+			std::size_t numPos = 0;
 			for (std::size_t j = 0; j < input.size(); ++j) {
 				if (numPos < numberSpans.size() && j >= numberSpans[numPos].start) {
 					char buf[64];
@@ -150,9 +151,7 @@ namespace calc {
 					j = numberSpans[numPos].end - 1;
 					++numPos;
 				}
-				else {
-					output += input[j];
-				}
+				else { output += input[j]; }
 			}
 			return output;
 		}
