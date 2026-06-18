@@ -100,6 +100,36 @@ namespace calc::core {
 				stack.push_back(std::atan(a));
 				break;
 			}
+			case VMop::Sinh: {
+				double a = stack.back(); stack.pop_back();
+				stack.push_back(std::sinh(a));
+				break;
+			}
+			case VMop::Cosh: {
+				double a = stack.back(); stack.pop_back();
+				stack.push_back(std::cosh(a));
+				break;
+			}
+			case VMop::Tanh: {
+				double a = stack.back(); stack.pop_back();
+				stack.push_back(std::tanh(a));
+				break;
+			}
+			case VMop::Asinh: {
+				double a = stack.back(); stack.pop_back();
+				stack.push_back(std::asinh(a));
+				break;
+			}
+			case VMop::Acosh: {
+				double a = stack.back(); stack.pop_back();
+				stack.push_back(std::acosh(a));
+				break;
+			}
+			case VMop::Atanh: {
+				double a = stack.back(); stack.pop_back();
+				stack.push_back(std::atanh(a));
+				break;
+			}
 			case VMop::Abs: {
 				double a = stack.back(); stack.pop_back();
 				stack.push_back(std::abs(a));

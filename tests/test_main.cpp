@@ -29,7 +29,7 @@ namespace {
 
 	// The engine no longer ships with built-in constants; the caller supplies
 	// them. The console frontend injects calc::defaultConstants(); the tests
-	// use that same set so constant-dependent expressions (PI, e, ...) behave
+	// use that same set so constant-dependent expressions (pi, e, ...) behave
 	// as the shipped program does. A few tests that specifically check the
 	// no-constants case construct a bare CalculatorCore{} instead.
 	CalculatorCore makeCore() {
@@ -250,7 +250,7 @@ TEST_CASE("evaluator: with bindings") {
 }
 
 TEST_CASE("evaluator: built-in constants") {
-	REQUIRE_APPROX(evalToNumber("PI"), 3.14159265358979, 1e-10);
+	REQUIRE_APPROX(evalToNumber("pi"), 3.14159265358979, 1e-10);
 }
 
 TEST_CASE("evaluator: undefined variable") {
@@ -836,6 +836,56 @@ TEST_CASE("functions: trigonometry") {
 	REQUIRE_APPROX(evalToNumber("atan(1)"), 0.7853981633974483, 1e-12);  // pi/4
 }
 
+TEST_CASE("functions: hyperbolics") {
+	// Base values at 0.
+	REQUIRE_APPROX(evalToNumber("sinh(0)"), 0.0, 1e-12);
+	REQUIRE_APPROX(evalToNumber("cosh(0)"), 1.0, 1e-12);
+	REQUIRE_APPROX(evalToNumber("tanh(0)"), 0.0, 1e-12);
+	// Values at 1 (against known constants).
+	REQUIRE_APPROX(evalToNumber("sinh(1)"), 1.1752011936438014, 1e-12);
+	REQUIRE_APPROX(evalToNumber("cosh(1)"), 1.5430806348152437, 1e-12);
+	REQUIRE_APPROX(evalToNumber("tanh(1)"), 0.7615941559557649, 1e-12);
+	// tanh saturates toward +/-1 for large |x| (and stays finite).
+	REQUIRE_APPROX(evalToNumber("tanh(20)"), 1.0, 1e-9);
+	REQUIRE_APPROX(evalToNumber("tanh(-20)"), -1.0, 1e-9);
+}
+
+TEST_CASE("functions: hyperbolic identity cosh^2 - sinh^2 = 1") {
+	// This catches a copy-paste error between the three implementations
+	// (e.g. sinh's case calling std::cosh): the identity only holds if each
+	// is wired to the right libm function. Checked at several points.
+	REQUIRE_APPROX(evalToNumber("cosh(0)^2 - sinh(0)^2"), 1.0, 1e-12);
+	REQUIRE_APPROX(evalToNumber("cosh(1)^2 - sinh(1)^2"), 1.0, 1e-12);
+	REQUIRE_APPROX(evalToNumber("cosh(2)^2 - sinh(2)^2"), 1.0, 1e-9);
+	REQUIRE_APPROX(evalToNumber("cosh(-3)^2 - sinh(-3)^2"), 1.0, 1e-7);
+}
+
+TEST_CASE("functions: inverse hyperbolics and round-trips") {
+	REQUIRE_APPROX(evalToNumber("asinh(0)"), 0.0, 1e-12);
+	REQUIRE_APPROX(evalToNumber("acosh(1)"), 0.0, 1e-12);
+	REQUIRE_APPROX(evalToNumber("atanh(0)"), 0.0, 1e-12);
+	// Inverse undoes forward on each function's valid domain.
+	REQUIRE_APPROX(evalToNumber("asinh(sinh(0.7))"), 0.7, 1e-12);
+	REQUIRE_APPROX(evalToNumber("acosh(cosh(0.7))"), 0.7, 1e-12);
+	REQUIRE_APPROX(evalToNumber("atanh(tanh(0.7))"), 0.7, 1e-12);
+}
+
+TEST_CASE("functions: inverse hyperbolic domain errors surface as NotFinite") {
+	CalculatorCore core;
+	// acosh is defined for x >= 1; atanh for |x| < 1. Outside, libm yields
+	// NaN, which the simplifier reports as NotFinite (same path as sqrt(-1)).
+	REQUIRE(core.evaluateLine("acosh(0.5)", 400).error().code == DiagCode::NotFinite);
+	REQUIRE(core.evaluateLine("atanh(2)", 400).error().code == DiagCode::NotFinite);
+	REQUIRE(core.evaluateLine("atanh(1)", 400).error().code == DiagCode::NotFinite);  // ->inf
+}
+
+TEST_CASE("functions: hyperbolics stay symbolic with a non-numeric argument") {
+	REQUIRE_EQ(evalToString("sinh(x)"), std::string("sinh(x)"));
+	REQUIRE_EQ(evalToString("cosh(x)"), std::string("cosh(x)"));
+	REQUIRE_EQ(evalToString("tanh(x)"), std::string("tanh(x)"));
+	REQUIRE_EQ(evalToString("asinh(x)"), std::string("asinh(x)"));
+}
+
 TEST_CASE("functions: abs, sqrt, log, root") {
 	REQUIRE_APPROX(evalToNumber("abs(-5)"), 5.0, 1e-12);
 	REQUIRE_APPROX(evalToNumber("abs(5)"), 5.0, 1e-12);
@@ -849,8 +899,8 @@ TEST_CASE("functions: abs, sqrt, log, root") {
 TEST_CASE("functions: composition and constants as arguments") {
 	REQUIRE_APPROX(evalToNumber("sqrt(abs(-16))"), 4.0, 1e-12);
 	REQUIRE_APPROX(evalToNumber("sin(asin(0.5))"), 0.5, 1e-12);
-	REQUIRE_APPROX(evalToNumber("sin(PI)"), 0.0, 1e-9);
-	REQUIRE_APPROX(evalToNumber("cos(PI)"), -1.0, 1e-12);
+	REQUIRE_APPROX(evalToNumber("sin(pi)"), 0.0, 1e-9);
+	REQUIRE_APPROX(evalToNumber("cos(pi)"), -1.0, 1e-12);
 }
 
 TEST_CASE("functions: stay symbolic when an argument is not numeric") {

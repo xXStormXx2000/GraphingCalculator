@@ -19,6 +19,8 @@ namespace calc::core {
 		Add, Sub, Mul, Div, Exp, Uminus,
 		Sin, Cos, Tan,
 		Asin, Acos, Atan,
+		Sinh, Cosh, Tanh,
+		Asinh, Acosh, Atanh,
 		Abs,
 		Log,
 		Sqrt, Root
@@ -40,6 +42,12 @@ namespace calc::core {
 																		   {"asin", {1, [](const auto& a) { return std::asin(a[0]); }, VMop::Asin}},
 																		   {"acos", {1, [](const auto& a) { return std::acos(a[0]); }, VMop::Acos}},
 																		   {"atan", {1, [](const auto& a) { return std::atan(a[0]); }, VMop::Atan}},
+																		   {"sinh", {1, [](const auto& a) { return std::sinh(a[0]); }, VMop::Sinh}},
+																		   {"cosh", {1, [](const auto& a) { return std::cosh(a[0]); }, VMop::Cosh}},
+																		   {"tanh", {1, [](const auto& a) { return std::tanh(a[0]); }, VMop::Tanh}},
+																		   {"asinh", {1, [](const auto& a) { return std::asinh(a[0]); }, VMop::Asinh}},
+																		   {"acosh", {1, [](const auto& a) { return std::acosh(a[0]); }, VMop::Acosh}},
+																		   {"atanh", {1, [](const auto& a) { return std::atanh(a[0]); }, VMop::Atanh}},
 																		   {"sqrt", {1, [](const auto& a) { return std::sqrt(a[0]); }, VMop::Sqrt}},
 																		   {"abs",  {1, [](const auto& a) { return std::abs(a[0]); }, VMop::Abs}},
 																		   // log(base, x) = log_base(x).
