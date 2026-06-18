@@ -248,20 +248,32 @@ with the simple node kinds.
 ## How graphing works
 
 `compilePlot` does all the expensive work once: it substitutes stored
-variables, simplifies, clears denominators, and compiles the equation to
-bytecode, returning a `PlotFunctor` — an immutable, thread-safe object
-that evaluates `lhs - rhs` of the equation at a given point. The renderer
-samples the functor across a grid and draws a cell wherever the sign
-changes between any pair of its corner samples, treating NaN as "no
-crossing".
+variables, simplifies, optionally clears denominators, and compiles the
+equation to bytecode, returning a `PlotFunctor` — an immutable,
+thread-safe object that evaluates `lhs - rhs` of the equation at a given
+point. The renderer samples the functor across a grid and draws a cell
+wherever the sign changes between any pair of its corner samples, treating
+NaN as "no crossing".
 
-Clearing denominators before sampling prevents vertical asymptotes from
-being drawn as spurious lines: `y = 1/x` is rewritten as `y*x = 1`, which
-is finite everywhere. Cross-multiplication handles sums of fractions, so
-`y = 1/(x-1) + 1/(x+1)` becomes `y*(x-1)*(x+1) = 2x`. (One documented
-consequence: equations with removable singularities such as
-`y = sin(x)/x` will draw a line at `x = 0`, because the cleared form
-`y*x = sin(x)` is satisfied by every `y` there.)
+By default the functor evaluates the raw `lhs - rhs`, which is the true
+level set but goes to ±infinity or NaN at poles (`y = 1/x` is non-finite
+at `x = 0`). That is the right form for dense direct evaluation that can
+handle non-finite samples itself — for example shading an implicit surface
+per-fragment on the GPU, where the undistorted level set is wanted and
+infinities simply don't shade.
+
+The ASCII renderer instead samples sparsely and decides each cell by sign
+change, so it sets `clearDenominators` on the `PlotRequest`. With the flag
+set, both sides are multiplied through by every denominator before
+compiling, so vertical asymptotes don't show up as spurious lines:
+`y = 1/x` is rewritten as `y*x = 1`, which is finite everywhere.
+Cross-multiplication handles sums of fractions, so
+`y = 1/(x-1) + 1/(x+1)` becomes `y*(x-1)*(x+1) = 2x`. This changes the
+function's magnitude near poles, so the cleared form is specifically for
+sign-of-`(lhs - rhs)` strategies and is not a drop-in substitute for the
+raw form. (One documented consequence: equations with removable
+singularities such as `y = sin(x)/x` will draw a line at `x = 0`, because
+the cleared form `y*x = sin(x)` is satisfied by every `y` there.)
 
 `PlotFunctor` is dimension-agnostic: an equation can be compiled against
 any number of axes, and the functor is evaluated with one coordinate per

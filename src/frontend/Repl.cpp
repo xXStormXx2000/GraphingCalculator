@@ -277,7 +277,14 @@ namespace calc {
 				bounds[k] = *r.value().value;
 			}
 
-			Result<PlotFunctor> functorR = m_core.compilePlot({ eqName, {xName, yName} });
+			// The ASCII renderer samples sparsely and decides each cell by sign
+			// change, so it needs the asymptote-suppressed form: ask compilePlot
+			// to clear denominators. (The default functor is raw L - R.)
+			Result<PlotFunctor> functorR = m_core.compilePlot({
+				.equationName = eqName,
+				.axisNames = {xName, yName},
+				.clearDenominators = true,
+				});
 			if (!functorR) return formatDiagnostic(functorR.error(), source);
 
 			GraphRequest req{

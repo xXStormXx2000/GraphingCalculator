@@ -417,7 +417,7 @@ TEST_CASE("clearDenominators: simple reciprocal") {
 	// y = 1/x: on the curve lhs-rhs == 0; near x=0 the functor stays finite.
 	CalculatorCore core;
 	core.evaluateLine("eq: y = 1/x", 400);
-	auto f = core.compilePlot({ "eq", {"x", "y"} });
+	auto f = core.compilePlot({ "eq", {"x", "y"}, true });
 	REQUIRE(f.ok());
 
 	// Points on the curve: y = 1/x -> lhs-rhs should be 0.
@@ -433,7 +433,7 @@ TEST_CASE("clearDenominators: sum of two fractions") {
 	// y = 1/(x-1) + 1/(x+1): at x=0, y=0; at x=2, y=4/3.
 	CalculatorCore core;
 	core.evaluateLine("eq: y = 1/(x-1) + 1/(x+1)", 400);
-	auto f = core.compilePlot({ "eq", {"x", "y"} });
+	auto f = core.compilePlot({ "eq", {"x", "y"}, true });
 	REQUIRE(f.ok());
 
 	REQUIRE_APPROX(f.value()({ 0.0, 0.0 }), 0.0, 1e-12);
@@ -444,7 +444,7 @@ TEST_CASE("clearDenominators: equation without denominators is unchanged in mean
 	// x^2 + y^2 = 1: point (1, 0) lies on the unit circle.
 	CalculatorCore core;
 	core.evaluateLine("eq: x^2 + y^2 = 1", 400);
-	auto f = core.compilePlot({ "eq", {"x", "y"} });
+	auto f = core.compilePlot({ "eq", {"x", "y"}, true });
 	REQUIRE(f.ok());
 
 	REQUIRE_APPROX(f.value()({ 1.0, 0.0 }), 0.0, 1e-12);

@@ -72,22 +72,30 @@ namespace calc::core {
 		std::optional<std::string> definitionOf(const std::string& name) const;
 		void clear();
 
-		// Build a thread-safe plotting functor for a stored equation.
-		// Does the eager work ONCE: substitute all variables, simplify,
-		// clear denominators, compile to bytecode, intern each axis name to a
-		// slot (axisNames[i] -> slot i), and snapshot it into an immutable
-		// program. After this returns, mutating the CalculatorCore cannot
-		// affect the functor.
+		// Build a thread-safe plotting functor for a stored equation. Does the
+		// eager work ONCE: substitute variables, simplify, optionally clear
+		// denominators, compile to bytecode, intern each axis name to a slot
+		// (axisNames[i] -> slot i). After this returns, mutating the
+		// CalculatorCore cannot affect the functor.
 		//
 		// `axisNames` may hold any number of axes (2 for a plane curve, 3 for a
-		// surface, more for higher-dimensional use). They must be distinct, and
-		// every free variable in the equation must be one of them.
+		// surface, ...). They must be distinct, and every free variable in the
+		// equation must be one of them. Fails (Diagnostic) at build time, not
+		// sample time, on an undefined non-axis variable, a non-equation, etc.
 		//
-		// Fails (Diagnostic) at build time, not sample time, if the equation
-		// references an undefined non-axis variable, isn't an equation, etc.
+		// The functor evaluates lhs - rhs. `clearDenominators` picks the form:
+		//   false (default): raw L - R. The true level set, but non-finite at
+		//     poles. For dense direct evaluation that handles inf/NaN itself
+		//     (e.g. shading an implicit surface on the GPU).
+		//   true: multiplied through by every denominator, so it's finite
+		//     everywhere and asymptotes aren't spurious zero-crossings. Needed
+		//     for sparse sign-change sampling (the ASCII grapher). Changes
+		//     magnitude near poles, so it's not a drop-in for the raw form. See
+		//     clearDenominators in Simplifier.h for edge cases (e.g. sin(x)/x).
 		struct PlotRequest {
-			std::string              equationName;  // a stored variable holding an equation
-			std::vector<std::string> axisNames;     // axisNames[i] -> slot i
+			std::string              equationName;        // a stored variable holding an equation
+			std::vector<std::string> axisNames;           // axisNames[i] -> slot i
+			bool                     clearDenominators = false;  // see above; default raw L - R
 		};
 		Result<PlotFunctor> compilePlot(const PlotRequest& req) const;
 

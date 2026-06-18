@@ -368,11 +368,11 @@ namespace calc::core {
 		Result<AstPtr> simplifyImpl(const AstPtr& node) {
 			if (node->simplified) return node;
 			return std::visit(overloaded{
-								  [&](const NumberNode& n) -> Result<AstPtr> {
-									  if (!std::isfinite(n.value)) return Diagnostic{DiagCode::NotFinite, node->span};
-									  return node;
-								  },
-								  [&](const VariableNode& v) -> Result<AstPtr> {
+				[&](const NumberNode& n) -> Result<AstPtr> {
+					if (!std::isfinite(n.value)) return Diagnostic{DiagCode::NotFinite, node->span};
+					return node;
+				},
+				[&](const VariableNode& v) -> Result<AstPtr> {
 					// `auto` for iterators returned by .find() throughout this file:
 					// the full iterator type adds nothing the .find() call doesn't
 					// already convey.
@@ -486,15 +486,15 @@ namespace calc::core {
 					}
 					return makeCall(c.name, std::move(args), node->span);
 				},
-[&](const EquationNode& e) -> Result<AstPtr> {
-	Result<AstPtr> lhs = simplifyImpl(e.lhs);
-	if (!lhs) return std::move(lhs).error();
-	lhs.value()->simplified = true;
-	Result<AstPtr> rhs = simplifyImpl(e.rhs);
-	if (!rhs) return std::move(rhs).error();
-	rhs.value()->simplified = true;
-	return makeEquation(lhs.value(), rhs.value(), node->span);
-},
+				[&](const EquationNode& e) -> Result<AstPtr> {
+					Result<AstPtr> lhs = simplifyImpl(e.lhs);
+					if (!lhs) return std::move(lhs).error();
+					lhs.value()->simplified = true;
+					Result<AstPtr> rhs = simplifyImpl(e.rhs);
+					if (!rhs) return std::move(rhs).error();
+					rhs.value()->simplified = true;
+					return makeEquation(lhs.value(), rhs.value(), node->span);
+				},
 				}, node->value);
 		}
 

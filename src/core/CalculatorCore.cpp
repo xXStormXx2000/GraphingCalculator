@@ -207,12 +207,19 @@ namespace calc::core {
 			return Diagnostic{ DiagCode::GraphTargetNotEquation, {} };
 		}
 
-		// Multiply both sides through by every denominator so vertical
-		// asymptotes don't show up as spurious sign-change pixels. See
-		// clearDenominators in Simplifier.h for the rationale and edge cases.
-		Result<AstPtr> equationR = clearDenominators(it->second.ast);
-		if (!equationR) return std::move(equationR).error();
-		AstPtr equation = equationR.value();
+		// Optionally multiply both sides through by every denominator so
+		// vertical asymptotes don't show up as spurious sign-change pixels.
+		// Gated by req.clearDenominators: callers doing sparse sign-change
+		// sampling need it; callers doing dense direct evaluation want the raw
+		// L - R and leave it off (the default). See clearDenominators in
+		// Simplifier.h for the rationale and edge cases, and the PlotRequest
+		// doc in CalculatorCore.h for why the two forms aren't interchangeable.
+		AstPtr equation = it->second.ast;
+		if (req.clearDenominators) {
+			Result<AstPtr> equationR = clearDenominators(it->second.ast);
+			if (!equationR) return std::move(equationR).error();
+			equation = equationR.value();
+		}
 
 		// Every free variable must be one of the axes, and at least one axis
 		// must actually appear in the equation.
