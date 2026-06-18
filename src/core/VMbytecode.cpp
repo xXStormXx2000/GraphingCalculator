@@ -1,6 +1,16 @@
+
+// VMbytecode.cpp — stack-machine compiler and interpreter.
+//
+// Precondition: the bytecode passed to execute() is assumed to come from
+// ASTtoBytecode() on a simplified, well-formed AST. The VM trusts this — it
+// does not validate opcodes or guard against stack underflow on the hot path,
+// since a violation means an upstream bug, not recoverable input. Debug-build
+// asserts catch such violations; release builds run unchecked for speed.
+
 #include "VMbytecode.h"
 
 #include <cmath>
+#include <cassert>
 
 namespace calc::core {
 
@@ -113,6 +123,7 @@ namespace calc::core {
 				break;
 			}
 			default:
+				assert(false && "You stupid donkey, you added a new VMop code and forgot to implement it in the VM");
 				break;
 			}
 		}
@@ -150,6 +161,7 @@ namespace calc::core {
 								  case BinaryOp::Div: op = VMop::Div; break;
 								  case BinaryOp::Pow: op = VMop::Exp; break;
 								  default:
+									  assert(false && "unreachable: malformed bytecode");
 									  break;
 								  }
 								  Bytecode bc(op);
