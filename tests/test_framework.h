@@ -108,7 +108,12 @@ static void CALC_CONCAT(_test_fn_, __LINE__)();                                 
     ::test_framework::assertionCount()++;                           \
     double _a = (a);                                                \
     double _b = (b);                                                \
-    if (std::abs(_a - _b) > (tol)) {                                \
+    /* Written as the negation of the pass condition so that a NaN  \
+       operand FAILS. `std::abs(_a - _b) <= tol` is false when      \
+       either side is NaN, and !false == true triggers the failure. \
+       The naive form `std::abs(_a - _b) > tol` is also false for   \
+       NaN, which would SILENTLY PASS -- the bug this guards. */     \
+    if (!(std::abs(_a - _b) <= (tol))) {                            \
         std::ostringstream _os;                                     \
         _os << #a " ~ " #b " (got: " << _a << " vs " << _b << ")";  \
         ::test_framework::reportFailure(__FILE__, __LINE__, _os.str()); \
