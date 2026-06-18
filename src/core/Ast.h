@@ -62,6 +62,13 @@ namespace calc::core {
 			EquationNode
 		> value;
 		SourceSpan span;
+		// Required for runtime, not an optimization: simplifyImpl returns early
+		// on this. Simplification re-enters already-simplified subtrees from
+		// multiple paths, so without the early-out the cost is O(2^N) in tree
+		// depth; the flag makes repeat visits O(1). Safe as shared mutable
+		// state only because it is monotonic (false->true, never reset) and
+		// simplified nodes are never mutated in place. To change one, build a
+		// new node.
 		bool simplified = false;
 	};
 
