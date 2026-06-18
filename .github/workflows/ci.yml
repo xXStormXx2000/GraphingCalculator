@@ -31,15 +31,19 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
-      # On Windows the Visual Studio generator is used (no Ninja needed); it
-      # is multi-config, so the build type is selected at build time.
+      # On Windows, do NOT hardcode the generator version: the windows-latest
+      # image migrates its bundled Visual Studio over time (VS 2022 -> VS 2026
+      # in June 2026), and a pinned "-G Visual Studio 17 2022" fails once the
+      # runner no longer has that exact version. Omitting -G lets CMake pick
+      # whichever VS is installed; -A x64 still pins the architecture, and the
+      # VS generator is multi-config so the build type is chosen at build time.
       - name: Configure (Unix)
         if: runner.os != 'Windows'
         run: cmake -B build -S . -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+        run: cmake -B build -S . -A x64
 
       - name: Build (Unix)
         if: runner.os != 'Windows'
