@@ -6,20 +6,9 @@
 #include <unordered_map>
 
 #include "Ast.h"
+#include "Builtins.h"
 
 namespace calc::core {
-
-	// Virtual Machine Operation
-	enum class VMop {
-		Push,
-		Bind,
-		Add, Sub, Mul, Div, Exp, Uminus,
-		Sin, Cos, Tan,
-		Asin, Acos, Atan,
-		Abs,
-		Log,
-		Sqrt, Root
-	};
 
 	// Bytecode structure to represent each instruction
 	struct Bytecode

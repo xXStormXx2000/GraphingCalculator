@@ -12,27 +12,40 @@
 
 namespace calc::core {
 
+	// Virtual Machine Operation
+	enum class VMop {
+		Push,
+		Bind,
+		Add, Sub, Mul, Div, Exp, Uminus,
+		Sin, Cos, Tan,
+		Asin, Acos, Atan,
+		Abs,
+		Log,
+		Sqrt, Root
+	};
+
 	struct FunctionDef {
 		std::size_t arity = 0;
 		std::function<double(const std::vector<double>&)> fn;
+		VMop op = VMop::Push;
 	};
 
 	// Function table. Centralized so the parser, evaluator, and simplifier
 	// can all consult it.
 	inline const std::unordered_map<std::string, FunctionDef>& functions() {
 		static const std::unordered_map<std::string, FunctionDef> table = {
-																		   {"sin",  {1, [](const auto& a) { return std::sin(a[0]); }}},
-																		   {"cos",  {1, [](const auto& a) { return std::cos(a[0]); }}},
-																		   {"tan",  {1, [](const auto& a) { return std::tan(a[0]); }}},
-																		   {"asin", {1, [](const auto& a) { return std::asin(a[0]); }}},
-																		   {"acos", {1, [](const auto& a) { return std::acos(a[0]); }}},
-																		   {"atan", {1, [](const auto& a) { return std::atan(a[0]); }}},
-																		   {"sqrt", {1, [](const auto& a) { return std::sqrt(a[0]); }}},
-																		   {"abs",  {1, [](const auto& a) { return std::abs(a[0]); }}},
+																		   {"sin",  {1, [](const auto& a) { return std::sin(a[0]); }, VMop::Sin}},
+																		   {"cos",  {1, [](const auto& a) { return std::cos(a[0]); }, VMop::Cos}},
+																		   {"tan",  {1, [](const auto& a) { return std::tan(a[0]); }, VMop::Tan}},
+																		   {"asin", {1, [](const auto& a) { return std::asin(a[0]); }, VMop::Asin}},
+																		   {"acos", {1, [](const auto& a) { return std::acos(a[0]); }, VMop::Acos}},
+																		   {"atan", {1, [](const auto& a) { return std::atan(a[0]); }, VMop::Atan}},
+																		   {"sqrt", {1, [](const auto& a) { return std::sqrt(a[0]); }, VMop::Sqrt}},
+																		   {"abs",  {1, [](const auto& a) { return std::abs(a[0]); }, VMop::Abs}},
 																		   // log(base, x) = log_base(x).
-																		   {"log",  {2, [](const auto& a) { return std::log(a[1]) / std::log(a[0]); }}},
+																		   {"log",  {2, [](const auto& a) { return std::log(a[1]) / std::log(a[0]); }, VMop::Log}},
 																		   // root(n, x) = x^(1/n).
-																		   {"root", {2, [](const auto& a) { return std::pow(a[1], 1.0 / a[0]); }}},
+																		   {"root", {2, [](const auto& a) { return std::pow(a[1], 1.0 / a[0]); }, VMop::Root}},
 		};
 		return table;
 	}

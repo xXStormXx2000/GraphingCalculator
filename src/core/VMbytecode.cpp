@@ -4,29 +4,6 @@
 
 namespace calc::core {
 
-	namespace {
-		struct FuncInfo {
-			VMop op;
-			size_t arity;
-		};
-
-		inline const std::unordered_map<std::string, FuncInfo>& funcToVMop() {
-			static const std::unordered_map<std::string, FuncInfo> table = {
-																			{"sin",  {VMop::Sin, 1}},
-																			{"cos",  {VMop::Cos, 1}},
-																			{"tan",  {VMop::Tan, 1}},
-																			{"asin", {VMop::Asin, 1}},
-																			{"acos", {VMop::Acos, 1}},
-																			{"atan", {VMop::Atan, 1}},
-																			{"sqrt", {VMop::Sqrt, 1}},
-																			{"abs",  {VMop::Abs, 1}},
-																			{"log",  {VMop::Log, 2}},
-																			{"root", {VMop::Root, 2}},
-			};
-			return table;
-		}
-	}
-
 	// Bytecode structure to represent each instruction
 	Bytecode::Bytecode(VMop o, double val, size_t bind)
 		: op(o), value(val), binding(bind) {
@@ -165,7 +142,7 @@ namespace calc::core {
 							  [&](const BinaryNode& b) -> size_t {
 								  size_t dLhs = ASTtoBytecode(b.lhs, bytecode, bindings);
 								  size_t dRhs = ASTtoBytecode(b.rhs, bytecode, bindings);
-								  VMop op;
+								  VMop op = VMop::Add;
 								  switch (b.op) {
 								  case BinaryOp::Add: op = VMop::Add; break;
 								  case BinaryOp::Sub: op = VMop::Sub; break;
@@ -180,7 +157,7 @@ namespace calc::core {
 								  return std::max(dLhs, 1 + dRhs);
 							  },
 							  [&](const CallNode& call) -> size_t {
-								  FuncInfo funInfo = funcToVMop().at(call.name);
+								  FunctionDef funInfo = functions().at(call.name);
 								  size_t maxDepth = 0;
 								  if (funInfo.arity == 1) {
 									  maxDepth = ASTtoBytecode(call.args.at(0), bytecode, bindings);
