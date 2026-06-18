@@ -35,8 +35,8 @@ b
 5*a
 >> a*a*b              # exponent combining
 a^2*b
->> /help(PI)          # built-in constant help
-PI = 3.141592654
+>> /help(pi)          # built-in constant help
+pi = 3.141592654
   Pi - ratio of a circle's circumference to its diameter.
 >> curve: y = x^2
 curve: y = x^2
@@ -71,7 +71,7 @@ Functions: `sin cos tan asin acos atan sqrt abs log root`, where
 `log(base, x)` is the logarithm of `x` in the given base and
 `root(n, x)` is the n-th root of `x`.
 
-Constants: `PI tau e phi G c h hbar k_B N_A R q_e`, with physical
+Constants: `pi tau e phi G c h hbar k_B N_A R q_e`, with physical
 constants using CODATA 2018 / SI 2019 values. They are spelled bare (no
 sigil), so single letters like `c`, `e`, `h`, `G`, and `R` resolve to
 their constant values and are not available as variable names.
@@ -93,7 +93,7 @@ none at all. See "Using the engine as a library" below.
 ```
 
 `/graph` plots a stored equation. Bound arguments may be any expression
-that evaluates to a number, so `/graph(x, y, -PI, PI, -1, 1, wave)` works.
+that evaluates to a number, so `/graph(x, y, -pi, pi, -1, 1, wave)` works.
 
 ## Architecture
 
@@ -226,7 +226,7 @@ user-facing wording to the caller.
 #### Constants
 
 The engine recognizes no constants by default: every identifier is a free
-variable, so a default-constructed engine treats `PI` or `c` as ordinary
+variable, so a default-constructed engine treats `pi` or `c` as ordinary
 symbols. Which constants exist, what they equal, and how they are spelled is a
 caller decision, passed to the constructor as a `ConstantTable` (a
 `std::unordered_map<std::string, double>`). Each name in it folds to its value
@@ -234,10 +234,10 @@ during simplification and is reserved — it cannot be redefined.
 
 ```cpp
 calc::core::CalculatorCore engine({
-    {"PI", 3.14159265358979},
+    {"pi", 3.14159265358979},
     {"e",  2.71828182845905},
 });
-engine.evaluateLine("PI + 1");   // -> 4.14159...; PI is no longer a variable
+engine.evaluateLine("pi + 1");   // -> 4.14159...; pi is no longer a variable
 ```
 
 This keeps the engine neutral on a question that is really presentation: the
