@@ -421,11 +421,17 @@ commands (and their aliases) to resolve.
 
 ## Tests
 
-`test_main.cpp` covers the tokenizer, parser precedence/associativity and
-error paths, evaluation semantics and error reporting, simplifier
-identities and cancellation, denominator clearing for the grapher (checked
-through compiled plot functors), printer round-tripping, and REPL
-integration including graphing and localized command dispatch.
+The engine tests are split by component into focused files that compile into a
+single `calc_tests` binary, with shared helpers in `test_support.h` and one
+entry point in `test_main.cpp`. Between them they cover the tokenizer and parser
+(precedence/associativity, error paths) in `test_tokenizer.cpp`, evaluation
+semantics, the math-function table, and session state in `test_evaluator.cpp`,
+simplifier identities, cancellation, like-term and exponent combining, and the
+performance regression guards in `test_simplifier.cpp`, printer round-tripping
+and parenthesization in `test_printer.cpp`, REPL integration including
+graphing, diagnostic carets, and localized command dispatch in `test_repl.cpp`,
+and denominator clearing, plot compilation (checked through compiled plot
+functors), and command parsing in `test_plot.cpp`.
 
 `test_capi.cpp` is a separate binary that links the `calc_c` shared library
 and includes only its public C header, so it covers the FFI boundary the way a

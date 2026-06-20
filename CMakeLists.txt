@@ -192,8 +192,15 @@ if(CALCULATOR_BUILD_TESTS)
     enable_testing()
     add_executable(calc_tests
         tests/test_main.cpp
+        tests/test_tokenizer.cpp
+        tests/test_evaluator.cpp
+        tests/test_simplifier.cpp
+        tests/test_printer.cpp
+        tests/test_repl.cpp
+        tests/test_plot.cpp
+        tests/test_support.h
         tests/test_framework.h
-        tests/expr_generator.h 
+        tests/expr_generator.h
         tests/test_property.cpp)
     # Tests exercise both layers, so they link the frontend (which pulls in
     # the engine transitively).
