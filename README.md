@@ -151,6 +151,18 @@ hardcoded English beyond compiled-in fallbacks.
 | `StringTable.{h,cpp}` | flat key/value file loader for the data files |
 | `main.cpp` | entry point |
 
+### C ABI — `calc_c`
+
+An optional `extern "C"` wrapper that exposes the engine to non-C++ callers as
+a shared library. It is another consumer of `Calc::core`, like the frontend,
+not part of the engine. See "From other languages (C ABI)" below for the
+design and a usage example.
+
+| File | Responsibility |
+| --- | --- |
+| `capi/calc_c.h` | pure-C public header (opaque handles, result structs) |
+| `capi/calc_c.cpp` | the marshaling shim; the only file that sees both worlds |
+
 ## Using the engine as a library
 
 The calculation engine is a self-contained, reusable library; the console
@@ -260,6 +272,74 @@ marking where the detail payload is substituted. It is not needed at runtime by
 the engine — it exists for the frontend and as a starting point you can adapt or
 replace with your own messages, in your own language, however you render errors.
 
+### From other languages (C ABI)
+
+The C++ surface above is the right one for a C++ consumer, but most languages
+can't call C++ directly: name mangling, exceptions, and an unstable ABI all
+get in the way. What nearly every language *can* call is C. So the engine also
+ships a thin C wrapper — `Calc::c`, built from `src/capi/` as a shared library
+(`libcalc_c.so` / `calc_c.dll`) — that exposes the same operations as plain C
+functions any FFI can bind: Python (ctypes/cffi), Rust, Go, C#, Node, Julia.
+
+It is a wrapper, not a second engine. Every function forwards to the C++ core;
+the only file that sees both worlds is `src/capi/calc_c.cpp`. The C++ engine is
+unchanged and unaware the layer exists, so this is purely additive — a C++
+consumer keeps using `Calc::core` and never pays for it.
+
+The header `calc_c.h` includes only `<stddef.h>` and is the whole contract.
+The shape mirrors the C++ surface through four ideas:
+
+- **Opaque handles.** `calc_core*` and `calc_plot*` are pointers to incomplete
+  types: a C caller holds them but can't look inside, so the pimpl-style
+  encapsulation survives the boundary. The shared library is built with hidden
+  visibility and exports *only* the `calc_*` functions; no engine symbols leak.
+- **Flat result structs.** `evaluateLine`'s `Result<EvalResult>` becomes a
+  `calc_eval_result` carrying either the success fields (canonical string,
+  optional assigned name, optional numeric value) or the failure fields (the
+  `DiagCode` integer, optional detail, source span).
+- **Codes, not text.** Diagnostics cross as integers matching `DiagCode.h`
+  exactly (its values are explicit and stable for this reason); map them with
+  your own table or `data/Errors.txt`, just as a C++ consumer would.
+- **Explicit ownership.** Whoever allocates, frees. Any pointer the library
+  returns is released with its matching `*_free` (`calc_eval_result_free`,
+  `calc_string_array_free`, …), never the caller's `free()`. Exceptions never
+  cross the boundary, and freeing `NULL` is always a safe no-op.
+
+Build it with the rest of the project (the `CALCULATOR_BUILD_C_API` option is
+on by default), or pull it into a CMake consumer as `Calc::c` the same way as
+`Calc::core`. A minimal Python consumer, using nothing but the standard
+library:
+
+```python
+import ctypes as C
+
+class EvalResult(C.Structure):
+    _fields_ = [("ok", C.c_int), ("canonical", C.c_char_p),
+                ("assigned_name", C.c_char_p), ("has_value", C.c_int),
+                ("value", C.c_double), ("diag_code", C.c_int),
+                ("detail", C.c_char_p), ("span_begin", C.c_size_t),
+                ("span_end", C.c_size_t)]
+
+lib = C.CDLL("./build/libcalc_c.so")
+lib.calc_core_new.restype = C.c_void_p
+lib.calc_evaluate_line.restype = C.POINTER(EvalResult)
+lib.calc_evaluate_line.argtypes = [C.c_void_p, C.c_char_p, C.c_size_t]
+
+core = lib.calc_core_new()
+r = lib.calc_evaluate_line(core, b"3*a + 2*a", 400)
+print(r.contents.canonical.decode())   # -> 5*a
+lib.calc_eval_result_free(r)
+lib.calc_core_free(core)
+```
+
+`bindings/python/smoke_test.py` is a fuller, dependency-free reference that
+drives every entry point and doubles as a template for binding the library
+from another language. The C ABI is covered in CI: `tests/test_capi.cpp`
+exercises the boundary as a C consumer would (opaque handles, result structs,
+the free contract) and runs under the same AddressSanitizer/UndefinedBehavior
+job as the rest of the suite, so the marshaling layer is checked for leaks and
+undefined behavior on every change.
+
 ## How simplification works
 
 The parser produces an ordinary binary AST. The simplifier produces a
@@ -348,3 +428,11 @@ error paths, evaluation semantics and error reporting, simplifier
 identities and cancellation, denominator clearing for the grapher (checked
 through compiled plot functors), printer round-tripping, and REPL
 integration including graphing and localized command dispatch.
+
+`test_capi.cpp` is a separate binary that links the `calc_c` shared library
+and includes only its public C header, so it covers the FFI boundary the way a
+foreign caller meets it: opaque handles, the flat result structs, diagnostic
+codes and detail payloads, plot compilation and sampling, command parsing, and
+the allocate/caller-frees ownership contract (including NULL handling). Both
+binaries run under the same CTest invocation, so the sanitizer job exercises
+the wrapper for leaks and undefined behavior alongside the engine.

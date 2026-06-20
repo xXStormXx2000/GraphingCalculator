@@ -79,6 +79,72 @@ target_compile_options(calc_core PRIVATE ${CALC_WARNING_FLAGS})
 # (PUBLIC) so anyone linking Calc::core is compiled as at least C++20.
 target_compile_features(calc_core PUBLIC cxx_std_20)
 
+# Compile the engine as position-independent code. It is a static library, but
+# the calc_c shared library below links it in, and a shared object can only
+# embed PIC objects. This is harmless for the other consumers (the frontend,
+# the CLI, the tests), which link it statically. Without it, linking calc_c
+# fails with a "relocation against ... in read-only section" error.
+#
+# Hidden visibility serves the encapsulation goal: when the engine is linked
+# into the calc_c shared library, its default-visible C++ symbols would
+# otherwise be re-exported from the .so, leaking the entire mangled core API
+# alongside the intended C surface. Hiding them by default means the shared
+# library exports only the symbols calc_c explicitly marks (the calc_* C
+# functions). The static-linking consumers are unaffected.
+set_target_properties(calc_core PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
+# ---- C ABI: calc_c (shared library) -----------------------------------
+# A thin extern "C" wrapper over the engine, built as a shared library so any
+# language with a C FFI can load it. It links the engine PRIVATELY -- the C++
+# core is an implementation detail of the .so/.dll, not part of its interface.
+# Visibility is hidden by default and the wrapper marks exactly its own symbols
+# with CALC_C_API, so the shared object exposes the C surface and nothing else
+# (no mangled C++ engine symbols leak out). Built unconditionally, like the
+# engine export, so an add_subdirectory consumer can opt into it too.
+option(CALCULATOR_BUILD_C_API "Build the C ABI shared library" ON)
+if(CALCULATOR_BUILD_C_API)
+    add_library(calc_c SHARED
+        src/capi/calc_c.h
+        src/capi/calc_c.cpp
+    )
+    add_library(Calc::c ALIAS calc_c)
+    set_target_properties(calc_c PROPERTIES
+        EXPORT_NAME c
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        # Encode the API version into the SONAME so consumers can pin an ABI.
+        VERSION   ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}
+    )
+    # CALC_C_BUILDING flips CALC_C_API to "export" (and dllexport on Windows).
+    target_compile_definitions(calc_c PRIVATE CALC_C_BUILDING)
+    # The public include dir is src/capi (where calc_c.h lives); core is linked
+    # PRIVATE so its headers never reach consumers of calc_c.
+    target_include_directories(calc_c PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/capi>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    )
+    target_link_libraries(calc_c PRIVATE calc_core)
+    target_compile_options(calc_c PRIVATE ${CALC_WARNING_FLAGS})
+
+    # Install the shared library, its single public header, and export it under
+    # the same Calc:: namespace as the engine, so find_package(Calc) consumers
+    # get Calc::c alongside Calc::core.
+    install(TARGETS calc_c
+        EXPORT CalcTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/capi/calc_c.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+endif()  # CALCULATOR_BUILD_C_API
+
 # Everything below is the APPLICATION: the console frontend, the CLI binary,
 # its data files, and the tests. A consumer who only wants the engine never
 # reaches any of it.
@@ -148,6 +214,40 @@ if(CALCULATOR_BUILD_TESTS)
     # indefinitely. A timeout turns that hang into a clean "Timeout" failure
     # instead of stalling CI until the runner-level limit kills it.
     set_tests_properties(calc_tests PROPERTIES TIMEOUT 60)
+
+    # C ABI boundary tests. A separate binary that includes ONLY calc_c.h and
+    # links the calc_c shared library, so it exercises exactly what a foreign
+    # caller sees -- opaque handles, flat result structs, diagnostic codes, and
+    # the allocate/caller-frees ownership contract -- with no access to any C++
+    # engine type. Under the sanitizer job this is what proves the marshaling
+    # layer is leak-free and UB-free; that wrapper is otherwise untouched by the
+    # engine-focused property suite. Gated on the C API being built.
+    if(CALCULATOR_BUILD_C_API)
+        add_executable(calc_c_tests
+            tests/test_capi.cpp
+            tests/test_framework.h)
+        target_compile_options(calc_c_tests PRIVATE ${CALC_WARNING_FLAGS})
+        # Link the shared library and include only its public header directory;
+        # the test framework header lives in tests/.
+        target_link_libraries(calc_c_tests PRIVATE calc_c)
+        target_include_directories(calc_c_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+        add_test(NAME calc_c_tests COMMAND calc_c_tests)
+        set_tests_properties(calc_c_tests PROPERTIES TIMEOUT 60)
+        # On Windows a DLL must sit next to the executable that loads it (or be
+        # on PATH). calc_c is a shared library, so copy it beside the test
+        # binary after build. $<TARGET_FILE:...> resolves to the actual DLL
+        # path including the per-config subdirectory multi-config generators
+        # use. No-op consequence on Unix, where rpath/loader handle this, but
+        # harmless to run there too.
+        if(WIN32)
+            add_custom_command(TARGET calc_c_tests POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        $<TARGET_FILE:calc_c> $<TARGET_FILE_DIR:calc_c_tests>
+                COMMENT "Staging calc_c DLL next to the C API test binary"
+                VERBATIM
+            )
+        endif()
+    endif()
 endif()  # CALCULATOR_BUILD_TESTS
 
 # ---- Install the application -------------------------------------------
