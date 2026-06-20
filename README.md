@@ -332,13 +332,11 @@ lib.calc_eval_result_free(r)
 lib.calc_core_free(core)
 ```
 
-`bindings/python/smoke_test.py` is a fuller, dependency-free reference that
-drives every entry point and doubles as a template for binding the library
-from another language. The C ABI is covered in CI: `tests/test_capi.cpp`
-exercises the boundary as a C consumer would (opaque handles, result structs,
-the free contract) and runs under the same AddressSanitizer/UndefinedBehavior
-job as the rest of the suite, so the marshaling layer is checked for leaks and
-undefined behavior on every change.
+The C ABI is covered in CI: `tests/test_capi.cpp` exercises the boundary as a
+C consumer would (opaque handles, result structs, the free contract) and runs
+under the same AddressSanitizer/UndefinedBehavior job as the rest of the suite,
+so the marshaling layer is checked for leaks and undefined behavior on every
+change.
 
 ## How simplification works
 
