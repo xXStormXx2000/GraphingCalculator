@@ -16,7 +16,7 @@ namespace calc::core {
 	struct FunctionDef {
 		std::size_t arity = 0;
 		std::function<double(const std::vector<double>&)> fn;
-		VMop op = VMop::Push;
+		VMop op = VMop::Invalid;
 	};
 
 	// Function table. Centralized so the parser, evaluator, and simplifier
