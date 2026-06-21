@@ -14,14 +14,8 @@
 
 namespace calc::core {
 
-	// Bytecode structure to represent each instruction
-	Bytecode::Bytecode(VMop o, double val, size_t bind)
-		: op(o), value(val), binding(bind) {
-	}
-
-
 	// Function to execute the bytecode
-	double execute(const std::vector<Bytecode>& bytecode,
+	double execute(const Chunk& bytecode,
 		const std::vector<double>& bindings,
 		std::vector<double>& stack) {
 		stack.clear();
@@ -59,7 +53,7 @@ namespace calc::core {
 				stack.push_back(a / b);
 				break;
 			}
-			case VMop::Exp: {
+			case VMop::Pow: {
 				double b = stack.back(); stack.pop_back();
 				double a = stack.back(); stack.pop_back();
 				stack.push_back(std::pow(a, b));
@@ -161,7 +155,7 @@ namespace calc::core {
 	}
 
 	// AST to Bytecode
-	size_t ASTtoBytecode(const AstPtr AST, std::vector<Bytecode>& bytecode,
+	size_t ASTtoBytecode(const AstPtr& AST, Chunk& bytecode,
 		const std::unordered_map<std::string, size_t>& bindings) {
 		return std::visit(overloaded{
 							  [&](const NumberNode& n) -> size_t {
@@ -189,7 +183,7 @@ namespace calc::core {
 								  case BinaryOp::Sub: op = VMop::Sub; break;
 								  case BinaryOp::Mul: op = VMop::Mul; break;
 								  case BinaryOp::Div: op = VMop::Div; break;
-								  case BinaryOp::Pow: op = VMop::Exp; break;
+								  case BinaryOp::Pow: op = VMop::Pow; break;
 								  default:
 									  assert(false && "unreachable: malformed bytecode");
 									  break;

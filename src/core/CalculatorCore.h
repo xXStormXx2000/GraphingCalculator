@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Types.h"   // SourceSpan, Diagnostic (key-based), Result<T>
+#include "Bytecode.h" // Program
 
 namespace calc::core {
 
@@ -108,6 +109,7 @@ namespace calc::core {
 			std::vector<std::string> axisNames;           // axisNames[i] -> slot i
 			bool                     clearDenominators = false;  // see above; default raw L - R
 		};
+		Result<Program> compileProgram(const PlotRequest& req) const;
 		Result<PlotFunctor> compilePlot(const PlotRequest& req) const;
 
 	private:

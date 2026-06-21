@@ -9,22 +9,9 @@
 #include <vector>
 
 #include "Ast.h"
+#include "Bytecode.h"
 
 namespace calc::core {
-
-	// Virtual Machine Operation
-	enum class VMop {
-		Push,
-		Bind,
-		Add, Sub, Mul, Div, Exp, Uminus,
-		Sin, Cos, Tan,
-		Asin, Acos, Atan,
-		Sinh, Cosh, Tanh,
-		Asinh, Acosh, Atanh,
-		Abs,
-		Log,
-		Sqrt, Root
-	};
 
 	struct FunctionDef {
 		std::size_t arity = 0;

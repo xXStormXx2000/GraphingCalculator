@@ -6,6 +6,7 @@
 #include "Builtins.h"
 #include "Printer.h"
 #include "VMbytecode.h"
+#include "Bytecode.h"
 
 #include <unordered_set>
 #include <unordered_map>
@@ -13,25 +14,23 @@
 namespace calc::core {
 
 	struct PlotFunctor::Impl {
-		const std::vector<Bytecode> m_code;
-		const std::size_t m_stackSize;
-		const std::size_t m_dimensions;
+		const Program m_program;
 	};
 
 	double PlotFunctor::operator()(const std::vector<double>& coords,
 		std::vector<double>& scratch) const {
-		return execute(m_impl->m_code, coords, scratch);
+		return execute(m_impl->m_program.code, coords, scratch);
 	}
 	double PlotFunctor::operator()(const std::vector<double>& coords) const {
 		std::vector<double> scratch;
 		scratch.reserve(requiredStackSize());
-		return execute(m_impl->m_code, coords, scratch);
+		return execute(m_impl->m_program.code, coords, scratch);
 	}
 	std::size_t PlotFunctor::dimensions() const {
-		return m_impl->m_dimensions;
+		return m_impl->m_program.dimensions;
 	}
 	std::size_t PlotFunctor::requiredStackSize() const {
-		return m_impl->m_stackSize;
+		return m_impl->m_program.stackSize;
 	}
 
 	struct CalculatorCore::Impl {
@@ -193,8 +192,7 @@ namespace calc::core {
 		evalResult.canonical = toString(*simplified);
 		return evalResult;
 	}
-
-	Result<PlotFunctor> CalculatorCore::compilePlot(const CalculatorCore::PlotRequest& req) const {
+	Result<Program> CalculatorCore::compileProgram(const CalculatorCore::PlotRequest& req) const {
 		// Build the axis-name -> slot-index map, checking for duplicate axes.
 		std::unordered_map<std::string, std::size_t> axisSlots;
 		for (std::size_t i = 0; i < req.axisNames.size(); ++i) {
@@ -213,24 +211,29 @@ namespace calc::core {
 			return Diagnostic{ DiagCode::GraphTargetNotEquation, {} };
 		}
 
-		// Optionally multiply both sides through by every denominator so
-		// vertical asymptotes don't show up as spurious sign-change pixels.
-		// Gated by req.clearDenominators: callers doing sparse sign-change
-		// sampling need it; callers doing dense direct evaluation want the raw
-		// L - R and leave it off (the default). See clearDenominators in
-		// Simplifier.h for the rationale and edge cases, and the PlotRequest
-		// doc in CalculatorCore.h for why the two forms aren't interchangeable.
+		// Optionally multiply both sides through by every denominator so vertical
+		// asymptotes don't show up as spurious sign-change pixels. Gated by
+		// req.clearDenominators: callers doing sparse sign-change sampling need it;
+		// callers doing dense direct evaluation want the raw L - R and leave it off
+		// (the default). See clearDenominators in Simplifier.h for the rationale and
+		// edge cases, and the PlotRequest doc in CalculatorCore.h for why the two
+		// forms aren't interchangeable.
+		//
+		// `equation` is the tree we actually compile, so every check below MUST run
+		// against `equation`, not the stored it->second.ast — otherwise validation
+		// inspects a different tree than the one we emit bytecode for.
 		AstPtr equation = it->second.ast;
 		if (req.clearDenominators) {
 			Result<AstPtr> equationR = clearDenominators(m_impl->m_constants, it->second.ast);
 			if (!equationR) return std::move(equationR).error();
-			equation = equationR.value();
+			equation = std::move(equationR).value();
 		}
 
-		// Every free variable must be one of the axes, and at least one axis
-		// must actually appear in the equation.
+		// Every free variable must be one of the axes, and at least one axis must
+		// actually appear in the equation. Checked against `equation` (the compiled
+		// tree), so the validation and the emitted bytecode always agree.
 		std::unordered_set<std::string> vars;
-		collectVariables(*it->second.ast, m_impl->m_constants, vars);
+		collectVariables(*equation, m_impl->m_constants, vars);
 		for (const std::string& v : vars) {
 			if (axisSlots.find(v) == axisSlots.end()) {
 				return Diagnostic{ DiagCode::NonAxisVariable, {}, v };
@@ -244,13 +247,22 @@ namespace calc::core {
 			return Diagnostic{ DiagCode::NoAxisVariable, {} };
 		}
 
-		std::vector<Bytecode> code;
+		Chunk code;
 		std::size_t depth = ASTtoBytecode(equation, code, axisSlots);
-		PlotFunctor f;
-		f.m_impl = std::make_shared<const PlotFunctor::Impl>(PlotFunctor::Impl{
+		Program program = {
 			std::move(code),
 			depth,
 			req.axisNames.size()
+		};
+		return program;
+	}
+	Result<PlotFunctor> CalculatorCore::compilePlot(const CalculatorCore::PlotRequest& req) const {
+		Result<Program> programR = compileProgram(req);
+		if (!programR) return std::move(programR).error();
+		Program program = std::move(programR).value();   // move, don't copy the Chunk out of the Result
+		PlotFunctor f;
+		f.m_impl = std::make_shared<const PlotFunctor::Impl>(PlotFunctor::Impl{
+			std::move(program)
 			});
 		return f;
 	}

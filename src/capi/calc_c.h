@@ -9,6 +9,12 @@
  * to the C++ engine and marshals the result into C-owned memory. The C++ core
  * is unchanged and unaware this layer exists.
  *
+ * Most of the surface drives the engine (evaluate, define/list/clear, compile a
+ * plot functor, parse a command). One piece is lower-level: calc_compile_program
+ * hands back the neutral bytecode the engine compiles to, so a consumer in any
+ * language can interpret or transpile it (to a CPU evaluator, a GPU shader, ...)
+ * rather than going through the opaque plot functor. See the bytecode section.
+ *
  * --- Conventions (read once, they apply everywhere) ----------------------
  *
  * Handles are opaque. `calc_core` and `calc_plot` are incomplete types; a C
@@ -50,7 +56,7 @@
 
 #include <stddef.h> /* size_t */
 
-/* Export/visibility. The shared library exposes exactly these symbols. */
+ /* Export/visibility. The shared library exposes exactly these symbols. */
 #if defined(_WIN32) || defined(__CYGWIN__)
 #  if defined(CALC_C_BUILDING)
 #    define CALC_C_API __declspec(dllexport)
@@ -69,179 +75,253 @@
 extern "C" {
 #endif
 
-/* ======================================================================== */
-/* Opaque handles                                                           */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Opaque handles                                                           */
+    /* ======================================================================== */
 
-/* A calculation session: owns the user's variable definitions. */
-typedef struct calc_core calc_core;
+    /* A calculation session: owns the user's variable definitions. */
+    typedef struct calc_core calc_core;
 
-/* A compiled, immutable plot functor produced by calc_compile_plot. */
-typedef struct calc_plot calc_plot;
+    /* A compiled, immutable plot functor produced by calc_compile_plot. */
+    typedef struct calc_plot calc_plot;
 
-/* ======================================================================== */
-/* Result of evaluating a line                                              */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Result of evaluating a line                                              */
+    /* ======================================================================== */
 
-/* The outcome of calc_evaluate_line. Exactly one of the two halves is
- * meaningful depending on `ok`. Always release with calc_eval_result_free. */
-typedef struct {
-	int          ok;            /* 1 = success, 0 = diagnostic               */
+    /* The outcome of calc_evaluate_line. Exactly one of the two halves is
+     * meaningful depending on `ok`. Always release with calc_eval_result_free. */
+    typedef struct {
+        int          ok;            /* 1 = success, 0 = diagnostic               */
 
-	/* --- success (ok == 1) --- */
-	const char*  canonical;     /* printed result, always set on success     */
-	const char*  assigned_name; /* the defined name, or NULL if not an
-	                             *  assignment                                */
-	int          has_value;     /* 1 if `value` holds a number (the
-	                             *  expression reduced to a scalar)           */
-	double       value;         /* meaningful only when has_value == 1        */
+        /* --- success (ok == 1) --- */
+        const char* canonical;     /* printed result, always set on success     */
+        const char* assigned_name; /* the defined name, or NULL if not an
+                                     *  assignment                                */
+        int          has_value;     /* 1 if `value` holds a number (the
+                                     *  expression reduced to a scalar)           */
+        double       value;         /* meaningful only when has_value == 1        */
 
-	/* --- failure (ok == 0) --- */
-	int          diag_code;     /* a DiagCode integer (see DiagCode.h)        */
-	const char*  detail;        /* diagnostic payload, or NULL if none        */
-	size_t       span_begin;    /* half-open [begin, end) byte span into the  */
-	size_t       span_end;      /* input that the diagnostic points at        */
-} calc_eval_result;
+        /* --- failure (ok == 0) --- */
+        int          diag_code;     /* a DiagCode integer (see DiagCode.h)        */
+        const char* detail;        /* diagnostic payload, or NULL if none        */
+        size_t       span_begin;    /* half-open [begin, end) byte span into the  */
+        size_t       span_end;      /* input that the diagnostic points at        */
+    } calc_eval_result;
 
-/* ======================================================================== */
-/* Result of parsing a slash command                                        */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Result of parsing a slash command                                        */
+    /* ======================================================================== */
 
-/* The outcome of calc_parse_command. On success, `args` holds `arg_count`
- * NUL-terminated, whitespace-trimmed argument strings. Release with
- * calc_command_result_free. */
-typedef struct {
-	int           ok;          /* 1 = success, 0 = diagnostic                 */
+    /* The outcome of calc_parse_command. On success, `args` holds `arg_count`
+     * NUL-terminated, whitespace-trimmed argument strings. Release with
+     * calc_command_result_free. */
+    typedef struct {
+        int           ok;          /* 1 = success, 0 = diagnostic                 */
 
-	/* --- success (ok == 1) --- */
-	const char*   name;        /* command name (without the leading '/')      */
-	const char**  args;        /* arg_count strings, or NULL if none          */
-	size_t        arg_count;
+        /* --- success (ok == 1) --- */
+        const char* name;        /* command name (without the leading '/')      */
+        const char** args;        /* arg_count strings, or NULL if none          */
+        size_t        arg_count;
 
-	/* --- failure (ok == 0) --- */
-	int           diag_code;
-	const char*   detail;
-	size_t        span_begin;
-	size_t        span_end;
-} calc_command_result;
+        /* --- failure (ok == 0) --- */
+        int           diag_code;
+        const char* detail;
+        size_t        span_begin;
+        size_t        span_end;
+    } calc_command_result;
 
-/* ======================================================================== */
-/* Lifecycle                                                                */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Lifecycle                                                                */
+    /* ======================================================================== */
 
-/* Create an engine with no constants: every identifier is a free variable.
- * Returns NULL only on allocation failure. */
-CALC_C_API calc_core* calc_core_new(void);
+    /* Create an engine with no constants: every identifier is a free variable.
+     * Returns NULL only on allocation failure. */
+    CALC_C_API calc_core* calc_core_new(void);
 
-/* Create an engine with a constant table. `names[i]` folds to `values[i]`
- * during simplification and becomes a reserved name. `names`/`values` are
- * copied; the caller keeps ownership of its own arrays. Returns NULL on
- * allocation failure or if any pointer argument is NULL with count > 0. */
-CALC_C_API calc_core* calc_core_new_with_constants(const char* const* names,
-                                                   const double* values,
-                                                   size_t count);
+    /* Create an engine with a constant table. `names[i]` folds to `values[i]`
+     * during simplification and becomes a reserved name. `names`/`values` are
+     * copied; the caller keeps ownership of its own arrays. Returns NULL on
+     * allocation failure or if any pointer argument is NULL with count > 0. */
+    CALC_C_API calc_core* calc_core_new_with_constants(const char* const* names,
+        const double* values,
+        size_t count);
 
-/* Destroy an engine. Safe on NULL. */
-CALC_C_API void calc_core_free(calc_core* core);
+    /* Destroy an engine. Safe on NULL. */
+    CALC_C_API void calc_core_free(calc_core* core);
 
-/* ======================================================================== */
-/* Evaluation                                                               */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Evaluation                                                               */
+    /* ======================================================================== */
 
-/* Parse + simplify one line (optionally an assignment "a: x^2"). `max_size`
- * bounds the post-substitution AST node count (pass 400 to match the console
- * default). Returns a heap-allocated result the caller must release with
- * calc_eval_result_free; returns NULL only on allocation failure. */
-CALC_C_API calc_eval_result* calc_evaluate_line(calc_core* core,
-                                                const char* input,
-                                                size_t max_size);
+    /* Parse + simplify one line (optionally an assignment "a: x^2"). `max_size`
+     * bounds the post-substitution AST node count (pass 400 to match the console
+     * default). Returns a heap-allocated result the caller must release with
+     * calc_eval_result_free; returns NULL only on allocation failure. */
+    CALC_C_API calc_eval_result* calc_evaluate_line(calc_core* core,
+        const char* input,
+        size_t max_size);
 
-CALC_C_API void calc_eval_result_free(calc_eval_result* result);
+    CALC_C_API void calc_eval_result_free(calc_eval_result* result);
 
-/* ======================================================================== */
-/* Variable session                                                         */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Variable session                                                         */
+    /* ======================================================================== */
 
-/* List defined names. Writes a heap-allocated array of `*out_count`
- * NUL-terminated strings to *out_names and returns 1; returns 0 on failure
- * (in which case *out_names is NULL and *out_count is 0). Release the array
- * with calc_string_array_free. Order is unspecified. */
-CALC_C_API int calc_defined_names(const calc_core* core,
-                                  const char*** out_names,
-                                  size_t* out_count);
+    /* List defined names. Writes a heap-allocated array of `*out_count`
+     * NUL-terminated strings to *out_names and returns 1; returns 0 on failure
+     * (in which case *out_names is NULL and *out_count is 0). Release the array
+     * with calc_string_array_free. Order is unspecified. */
+    CALC_C_API int calc_defined_names(const calc_core* core,
+        const char*** out_names,
+        size_t* out_count);
 
-/* Return the printed definition of `name`, or NULL if it is not defined (or
- * on failure). Release a non-NULL return with calc_string_free. */
-CALC_C_API const char* calc_definition_of(const calc_core* core,
-                                          const char* name);
+    /* Return the printed definition of `name`, or NULL if it is not defined (or
+     * on failure). Release a non-NULL return with calc_string_free. */
+    CALC_C_API const char* calc_definition_of(const calc_core* core,
+        const char* name);
 
-/* Remove all variable definitions. Safe on NULL. */
-CALC_C_API void calc_clear(calc_core* core);
+    /* Remove all variable definitions. Safe on NULL. */
+    CALC_C_API void calc_clear(calc_core* core);
 
-/* ======================================================================== */
-/* Plotting                                                                 */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Plotting                                                                 */
+    /* ======================================================================== */
 
-/* Compile a stored equation into an immutable plot functor. `axis_names` lists
- * `axis_count` distinct axis names; axis i becomes coordinate slot i. Every
- * free variable in the equation must be an axis. `clear_denominators` picks the
- * raw L-R form (0) or the asymptote-free cross-multiplied form (1); see the
- * PlotRequest docs in CalculatorCore.h.
- *
- * On success returns a non-NULL handle (release with calc_plot_free) and, if
- * out_diag_code is non-NULL, sets *out_diag_code to 0. On failure returns NULL
- * and sets *out_diag_code (when non-NULL) to the DiagCode integer. */
-CALC_C_API calc_plot* calc_compile_plot(const calc_core* core,
-                                        const char* equation_name,
-                                        const char* const* axis_names,
-                                        size_t axis_count,
-                                        int clear_denominators,
-                                        int* out_diag_code);
+    /* Compile a stored equation into an immutable plot functor. `axis_names` lists
+     * `axis_count` distinct axis names; axis i becomes coordinate slot i. Every
+     * free variable in the equation must be an axis. `clear_denominators` picks the
+     * raw L-R form (0) or the asymptote-free cross-multiplied form (1); see the
+     * PlotRequest docs in CalculatorCore.h.
+     *
+     * On success returns a non-NULL handle (release with calc_plot_free) and, if
+     * out_diag_code is non-NULL, sets *out_diag_code to 0. On failure returns NULL
+     * and sets *out_diag_code (when non-NULL) to the DiagCode integer. */
+    CALC_C_API calc_plot* calc_compile_plot(const calc_core* core,
+        const char* equation_name,
+        const char* const* axis_names,
+        size_t axis_count,
+        int clear_denominators,
+        int* out_diag_code);
 
-/* Evaluate lhs - rhs of the compiled equation at `coords` (which must hold
- * exactly calc_plot_dimensions() entries, one per axis in slot order).
- * Returns NaN on any domain error -- the grapher treats NaN as "no crossing",
- * so there is no separate error path. Allocates its own scratch internally,
- * which is why it is safe to call concurrently on a shared functor. */
-CALC_C_API double calc_plot_eval(const calc_plot* plot,
-                                 const double* coords,
-                                 size_t coord_count);
+    /* Evaluate lhs - rhs of the compiled equation at `coords` (which must hold
+     * exactly calc_plot_dimensions() entries, one per axis in slot order).
+     * Returns NaN on any domain error -- the grapher treats NaN as "no crossing",
+     * so there is no separate error path. Allocates its own scratch internally,
+     * which is why it is safe to call concurrently on a shared functor. */
+    CALC_C_API double calc_plot_eval(const calc_plot* plot,
+        const double* coords,
+        size_t coord_count);
 
-/* Number of axes this functor expects in each calc_plot_eval call. */
-CALC_C_API size_t calc_plot_dimensions(const calc_plot* plot);
+    /* Number of axes this functor expects in each calc_plot_eval call. */
+    CALC_C_API size_t calc_plot_dimensions(const calc_plot* plot);
 
-/* Destroy a plot functor. Safe on NULL. */
-CALC_C_API void calc_plot_free(calc_plot* plot);
+    /* Destroy a plot functor. Safe on NULL. */
+    CALC_C_API void calc_plot_free(calc_plot* plot);
 
-/* ======================================================================== */
-/* Command parsing (pure string manipulation; no engine state needed)       */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Command parsing (pure string manipulation; no engine state needed)       */
+    /* ======================================================================== */
 
-/* Parse "/name(arg1, arg2, ...)" into a name and trimmed argument strings.
- * Returns a heap-allocated result the caller must release with
- * calc_command_result_free; returns NULL only on allocation failure. */
-CALC_C_API calc_command_result* calc_parse_command(const char* input);
+    /* Parse "/name(arg1, arg2, ...)" into a name and trimmed argument strings.
+     * Returns a heap-allocated result the caller must release with
+     * calc_command_result_free; returns NULL only on allocation failure. */
+    CALC_C_API calc_command_result* calc_parse_command(const char* input);
 
-CALC_C_API void calc_command_result_free(calc_command_result* result);
+    CALC_C_API void calc_command_result_free(calc_command_result* result);
 
-/* ======================================================================== */
-/* Generic deallocators for arrays/strings handed back above                */
-/* ======================================================================== */
+    /* ======================================================================== */
+    /* Bytecode (the neutral compiled form)                                     */
+    /* ======================================================================== */
 
-/* Free a single string returned by this library (e.g. calc_definition_of). */
-CALC_C_API void calc_string_free(const char* s);
+    /* Opcode values, mirroring calc::core::VMop in Bytecode.h. These integers are
+     * the stable public bytecode format: a consumer walks a calc_program's `code`
+     * and switches on `op` to interpret each instruction (run it on a stack, or
+     * transpile it to a CPU evaluator, a GLSL/WGSL shader, etc.). The values match
+     * the C++ enum exactly -- a static_assert in the implementation enforces this --
+     * so they are safe to depend on across the ABI. Append within a band; never
+     * renumber or reuse a value. */
+    typedef enum {
+        CALC_OP_INVALID = 0,
+        CALC_OP_PUSH = 1000,
+        CALC_OP_BIND = 1001,
+        CALC_OP_ADD = 2000,
+        CALC_OP_SUB = 2001,
+        CALC_OP_MUL = 2002,
+        CALC_OP_DIV = 2003,
+        CALC_OP_POW = 2004,
+        CALC_OP_UMINUS = 3000,
+        CALC_OP_SIN = 4000, CALC_OP_COS = 4001, CALC_OP_TAN = 4002,
+        CALC_OP_ASIN = 4100, CALC_OP_ACOS = 4101, CALC_OP_ATAN = 4102,
+        CALC_OP_SINH = 4200, CALC_OP_COSH = 4201, CALC_OP_TANH = 4202,
+        CALC_OP_ASINH = 4300, CALC_OP_ACOSH = 4301, CALC_OP_ATANH = 4302,
+        CALC_OP_SQRT = 4400, CALC_OP_ROOT = 4401,
+        CALC_OP_ABS = 4500, CALC_OP_LOG = 4501
+    } calc_op;
 
-/* Free a string array returned by this library (e.g. calc_defined_names).
- * Frees both the element strings and the array itself. */
-CALC_C_API void calc_string_array_free(const char** arr, size_t count);
+    /* One instruction, mirroring calc::core::Bytecode field-for-field. `value` is
+     * meaningful only when op == CALC_OP_PUSH; `binding` only when op ==
+     * CALC_OP_BIND (it indexes the coordinate vector, in axis-name order). For
+     * every other op both are unused. The program is in RPN order: evaluating
+     * lhs - rhs of the equation means running the instructions on a value stack. */
+    typedef struct {
+        int    op;       /* a calc_op value */
+        double value;
+        size_t binding;
+    } calc_bytecode;
 
-/* ======================================================================== */
-/* Version                                                                  */
-/* ======================================================================== */
+    /* A compiled program: the neutral form the engine emits, from which any target
+     * can be generated. This is the same compilation calc_compile_plot performs,
+     * exposed as inspectable data instead of an opaque functor -- the primitive
+     * that keeps the engine target-neutral, since a consumer can walk it to any
+     * representation it needs.
+     *
+     * On success (`ok` == 1): `code` holds `code_count` instructions; `stack_size`
+     * is the maximum value-stack depth (size your stack with it); `dimensions` is
+     * the number of axes (the length of the coordinate vector a Bind selects from).
+     * On failure (`ok` == 0): `code` is NULL and `diag_code` is the DiagCode reason.
+     * Always release with calc_program_free. */
+    typedef struct {
+        int            ok;          /* 1 = success, 0 = diagnostic                  */
+        calc_bytecode* code;        /* code_count instructions, or NULL on failure  */
+        size_t         code_count;
+        size_t         stack_size;  /* max stack depth (valid when ok == 1)         */
+        size_t         dimensions;  /* axis count       (valid when ok == 1)        */
+        int            diag_code;   /* a DiagCode integer (valid when ok == 0)      */
+    } calc_program;
 
-/* Semantic version of this C API, e.g. "1.0.0". Statically allocated; do not
- * free. */
-CALC_C_API const char* calc_c_version(void);
+    /* Compile a stored equation to neutral bytecode. Same arguments and build-time
+     * semantics as calc_compile_plot (distinct axis names, every free variable an
+     * axis, clear_denominators picks raw L-R vs. cross-multiplied), but hands back
+     * the program for the caller to interpret or transpile rather than an opaque
+     * functor. Returns a heap-allocated result the caller must release with
+     * calc_program_free; returns NULL only on allocation failure. */
+    CALC_C_API calc_program* calc_compile_program(const calc_core* core,
+        const char* equation_name,
+        const char* const* axis_names,
+        size_t axis_count,
+        int clear_denominators);
+
+    CALC_C_API void calc_program_free(calc_program* program);
+
+    /* ======================================================================== */
+    /* Generic deallocators for arrays/strings handed back above                */
+    /* ======================================================================== */
+
+    /* Free a single string returned by this library (e.g. calc_definition_of). */
+    CALC_C_API void calc_string_free(const char* s);
+
+    /* Free a string array returned by this library (e.g. calc_defined_names).
+     * Frees both the element strings and the array itself. */
+    CALC_C_API void calc_string_array_free(const char** arr, size_t count);
+
+    /* ======================================================================== */
+    /* Version                                                                  */
+    /* ======================================================================== */
+
+    /* Semantic version of this C API, e.g. "1.0.0". Statically allocated; do not
+     * free. */
+    CALC_C_API const char* calc_c_version(void);
 
 #ifdef __cplusplus
 }  /* extern "C" */

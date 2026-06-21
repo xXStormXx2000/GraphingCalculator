@@ -47,6 +47,7 @@ add_library(calc_core STATIC
     src/core/Tokenizer.h         src/core/Tokenizer.cpp
     src/core/Types.h
     src/core/VMbytecode.h        src/core/VMbytecode.cpp
+    src/core/Bytecode.h
 )
 
 # Namespaced alias: consumers link `Calc::core`. The `::` makes CMake resolve
@@ -286,14 +287,15 @@ install(TARGETS calc_core
 
 # Install ONLY the public headers. The pimpl in CalculatorCore.h keeps the AST
 # and every other internal type out of the public surface. The public closure
-# is three headers: CalculatorCore.h (the engine API), Types.h (which it
-# includes, for Result/Diagnostic), and DiagCode.h (which Types.h includes, for
-# the diagnostic codes carried in Result). The remaining internal headers
-# (Ast.h, Simplifier.h, Parser.h, ...) are deliberately NOT installed.
+# is four headers: CalculatorCore.h (the engine API), Types.h (which it includes, 
+#for Result/Diagnostic), Bytecode.h (which it includes, for Program), and DiagCode.h
+# (which Types.h includes, for the diagnostic codes carried in Result). The remaining 
+# internal headers (Ast.h, Simplifier.h, Parser.h, ...) are deliberately NOT installed.
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/CalculatorCore.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/Types.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/DiagCode.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/Bytecode.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 

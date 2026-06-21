@@ -221,9 +221,9 @@ TEST_CASE("capi: compile and sample a plot") {
 	REQUIRE(calc_plot_dimensions(p) == 2);
 
 	// y = x^2: lhs-rhs is ~0 on the curve, nonzero (and finite) off it.
-	const double on[]  = { 2.0, 4.0 };
+	const double on[] = { 2.0, 4.0 };
 	const double off[] = { 2.0, 0.0 };
-	const double von  = calc_plot_eval(p, on, 2);
+	const double von = calc_plot_eval(p, on, 2);
 	const double voff = calc_plot_eval(p, off, 2);
 	REQUIRE_APPROX(von, 0.0, 1e-9);
 	REQUIRE(!std::isnan(voff));
@@ -285,6 +285,74 @@ TEST_CASE("capi: NULL inputs are handled, not crashed on") {
 	REQUIRE(std::isnan(calc_plot_eval(nullptr, nullptr, 0)));
 	REQUIRE(calc_plot_dimensions(nullptr) == 0);
 	REQUIRE(calc_definition_of(nullptr, "x") == nullptr);
+}
+
+TEST_CASE("capi: compile_program emits neutral bytecode") {
+	Core core(calc_core_new());
+	{ Eval a(calc_evaluate_line(core, "curve: y = x^2", 400)); }
+
+	const char* axes[] = { "x", "y" };
+	calc_program* p = calc_compile_program(core, "curve", axes, 2, 0);
+	REQUIRE(p != nullptr);
+	REQUIRE(p->ok == 1);
+	REQUIRE(p->dimensions == 2);
+	// y = x^2 compiles to lhs - rhs in RPN: Bind(y) Bind(x) Push(2) Pow Sub.
+	REQUIRE(p->code_count == 5);
+	REQUIRE(p->code[0].op == CALC_OP_BIND);
+	REQUIRE(p->code[0].binding == 1);          // y is axis slot 1
+	REQUIRE(p->code[1].op == CALC_OP_BIND);
+	REQUIRE(p->code[1].binding == 0);          // x is axis slot 0
+	REQUIRE(p->code[2].op == CALC_OP_PUSH);
+	REQUIRE(p->code[2].value == 2.0);
+	REQUIRE(p->code[3].op == CALC_OP_POW);
+	REQUIRE(p->code[4].op == CALC_OP_SUB);
+	REQUIRE(p->stack_size >= 2);               // needs room for the operands
+	calc_program_free(p);
+}
+
+TEST_CASE("capi: compile_program reports the binding contract") {
+	// The binding index must equal the axis slot (axis-name order), so a
+	// consumer walking the bytecode knows which coordinate each Bind selects.
+	Core core(calc_core_new());
+	{ Eval a(calc_evaluate_line(core, "line: y = x", 400)); }
+	const char* axes[] = { "x", "y" };
+	calc_program* p = calc_compile_program(core, "line", axes, 2, 0);
+	REQUIRE(p->ok == 1);
+	// Every Bind's index is a valid axis slot in [0, dimensions).
+	for (size_t i = 0; i < p->code_count; ++i) {
+		if (p->code[i].op == CALC_OP_BIND) {
+			REQUIRE(p->code[i].binding < p->dimensions);
+		}
+	}
+	calc_program_free(p);
+}
+
+TEST_CASE("capi: compile_program failures report a code, not a crash") {
+	Core core(calc_core_new());
+	const char* axes[] = { "x", "y" };
+
+	// Undefined equation -> diagnostic carried inside the result.
+	calc_program* missing = calc_compile_program(core, "nope", axes, 2, 0);
+	REQUIRE(missing != nullptr);
+	REQUIRE(missing->ok == 0);
+	REQUIRE(missing->code == nullptr);
+	REQUIRE(missing->diag_code == 5002);   // DiagCode::NoSuchVariable
+	calc_program_free(missing);
+
+	// A stored non-equation is also rejected.
+	{ Eval a(calc_evaluate_line(core, "notEq: x^2", 400)); }
+	calc_program* notEq = calc_compile_program(core, "notEq", axes, 2, 0);
+	REQUIRE(notEq->ok == 0);
+	REQUIRE(notEq->diag_code == 5003);     // DiagCode::GraphTargetNotEquation
+	calc_program_free(notEq);
+}
+
+TEST_CASE("capi: compile_program NULL handling") {
+	calc_program_free(nullptr);            // safe no-op
+	const char* axes[] = { "x", "y" };
+	REQUIRE(calc_compile_program(nullptr, "f", axes, 2, 0) == nullptr);
+	Core core(calc_core_new());
+	REQUIRE(calc_compile_program(core, nullptr, axes, 2, 0) == nullptr);
 }
 
 int main() {
