@@ -355,6 +355,73 @@ TEST_CASE("capi: compile_program NULL handling") {
 	REQUIRE(calc_compile_program(core, nullptr, axes, 2, 0) == nullptr);
 }
 
+TEST_CASE("capi: compile_glsl emits a float-typed expression") {
+	Core core(calc_core_new());
+	{ Eval a(calc_evaluate_line(core, "curve: y = x^2", 400)); }
+	const char* axes[] = { "x", "y" };
+	const char* ids[] = { "p.x", "p.y" };
+	calc_glsl_result* g = calc_compile_glsl(core, "curve", axes, 2, ids, 2, 0);
+	REQUIRE(g != nullptr);
+	REQUIRE(g->ok == 1);
+	REQUIRE(g->text != nullptr);
+	// lhs - rhs with the caller's accessors and float-syntax literals.
+	REQUIRE(str(g->text) == "(p.y-pow(p.x,2.0))");
+	calc_glsl_result_free(g);
+}
+
+TEST_CASE("capi: compile_glsl rewrites GLSL-absent functions") {
+	Core core(calc_core_new());
+	const char* axes[] = { "x", "y" };
+	const char* ids[] = { "X", "Y" };
+
+	// log(base, x) has no GLSL builtin -> log(x)/log(base).
+	{ Eval a(calc_evaluate_line(core, "lg: y = log(2, x)", 400)); }
+	calc_glsl_result* g = calc_compile_glsl(core, "lg", axes, 2, ids, 2, 0);
+	REQUIRE(g->ok == 1);
+	REQUIRE(str(g->text) == "(Y-(log(X)/log(2.0)))");
+	calc_glsl_result_free(g);
+
+	// root(n, x) has no GLSL builtin -> pow(x, 1.0/n).
+	{ Eval b(calc_evaluate_line(core, "rt: y = root(3, x)", 400)); }
+	calc_glsl_result* g2 = calc_compile_glsl(core, "rt", axes, 2, ids, 2, 0);
+	REQUIRE(g2->ok == 1);
+	REQUIRE(str(g2->text) == "(Y-pow(X,(1.0/3.0)))");
+	calc_glsl_result_free(g2);
+}
+
+TEST_CASE("capi: compile_glsl wrong identifier count is a -1 programming error") {
+	Core core(calc_core_new());
+	{ Eval a(calc_evaluate_line(core, "curve: y = x^2", 400)); }
+	const char* axes[] = { "x", "y" };
+	const char* one[] = { "p.x" };   // one identifier for two axes
+	calc_glsl_result* g = calc_compile_glsl(core, "curve", axes, 2, one, 1, 0);
+	REQUIRE(g != nullptr);
+	REQUIRE(g->ok == 0);
+	REQUIRE(g->diag_code == -1);       // the programming-error sentinel
+	REQUIRE(g->text != nullptr);       // a developer message, not NULL
+	calc_glsl_result_free(g);
+}
+
+TEST_CASE("capi: compile_glsl user-input error is a positive diag, no text") {
+	Core core(calc_core_new());
+	const char* axes[] = { "x", "y" };
+	const char* ids[] = { "p.x", "p.y" };
+	calc_glsl_result* g = calc_compile_glsl(core, "nope", axes, 2, ids, 2, 0);
+	REQUIRE(g->ok == 0);
+	REQUIRE(g->diag_code == 5002);     // DiagCode::NoSuchVariable, a real code
+	REQUIRE(g->text == nullptr);       // user diagnostics carry no text here
+	calc_glsl_result_free(g);
+}
+
+TEST_CASE("capi: compile_glsl NULL handling") {
+	calc_glsl_result_free(nullptr);    // safe no-op
+	const char* axes[] = { "x", "y" };
+	const char* ids[] = { "p.x", "p.y" };
+	REQUIRE(calc_compile_glsl(nullptr, "f", axes, 2, ids, 2, 0) == nullptr);
+	Core core(calc_core_new());
+	REQUIRE(calc_compile_glsl(core, nullptr, axes, 2, ids, 2, 0) == nullptr);
+}
+
 int main() {
 	return runAll();
 }

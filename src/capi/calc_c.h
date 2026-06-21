@@ -10,10 +10,11 @@
  * is unchanged and unaware this layer exists.
  *
  * Most of the surface drives the engine (evaluate, define/list/clear, compile a
- * plot functor, parse a command). One piece is lower-level: calc_compile_program
- * hands back the neutral bytecode the engine compiles to, so a consumer in any
- * language can interpret or transpile it (to a CPU evaluator, a GPU shader, ...)
- * rather than going through the opaque plot functor. See the bytecode section.
+ * plot functor, parse a command). Two pieces are lower-level: calc_compile_program
+ * hands back the neutral bytecode the engine compiles to, and calc_compile_glsl
+ * walks that bytecode to one concrete target (a GLSL fragment-shader expression).
+ * A consumer in any language can drive either rather than going through the
+ * opaque plot functor. See the bytecode and GLSL sections.
  *
  * --- Conventions (read once, they apply everywhere) ----------------------
  *
@@ -303,6 +304,52 @@ extern "C" {
         int clear_denominators);
 
     CALC_C_API void calc_program_free(calc_program* program);
+
+    /* ======================================================================== */
+    /* GLSL (one concrete target, built on the bytecode)                        */
+    /* ======================================================================== */
+
+    /* The outcome of calc_compile_glsl. The single `text` field is reused: on
+     * success it is the emitted GLSL expression; on a programming error it is a
+     * human-readable message. Which one is governed by `diag_code`:
+     *
+     *   ok == 1                : success. `text` is the GLSL expression.
+     *   ok == 0, diag_code > 0 : a user-input diagnostic (a DiagCode integer, e.g.
+     *                            an undefined equation). `text` is NULL. Same
+     *                            errors compile_program reports.
+     *   ok == 0, diag_code ==-1: a PROGRAMMING error in the caller (e.g. the wrong
+     *                            number of axis identifiers). `text` holds a plain
+     *                            English message meant for the developer, NOT the
+     *                            end user -- it has no code and no localization,
+     *                            because it describes a misuse of the API, not
+     *                            something a user typed. Fix your call; don't show
+     *                            this to a user.
+     *
+     * -1 is a reserved sentinel, guaranteed disjoint from every DiagCode (which are
+     * all positive). Always release with calc_glsl_result_free. */
+    typedef struct {
+        int          ok;          /* 1 = success, 0 = failure                       */
+        const char* text;        /* GLSL on success; error message when diag_code
+                                   *  == -1; NULL when diag_code > 0                 */
+        int          diag_code;   /* >0 DiagCode (user input); -1 programming error */
+    } calc_glsl_result;
+
+    /* Emit a GLSL expression for lhs - rhs of a stored equation, ready to splice
+     * into a fragment shader (e.g. "((p.y)-pow(p.x,2.0))"). Same build-time
+     * semantics as calc_compile_program. `axis_identifiers` supplies the GLSL
+     * accessor for each axis, in axis-name order; `axis_identifier_count` MUST
+     * equal axis_count, or you get the diag_code == -1 programming-error result.
+     * Returns a heap-allocated result the caller must release with
+     * calc_glsl_result_free; returns NULL only on allocation failure. */
+    CALC_C_API calc_glsl_result* calc_compile_glsl(const calc_core* core,
+        const char* equation_name,
+        const char* const* axis_names,
+        size_t axis_count,
+        const char* const* axis_identifiers,
+        size_t axis_identifier_count,
+        int clear_denominators);
+
+    CALC_C_API void calc_glsl_result_free(calc_glsl_result* result);
 
     /* ======================================================================== */
     /* Generic deallocators for arrays/strings handed back above                */

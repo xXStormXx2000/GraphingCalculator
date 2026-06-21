@@ -11,6 +11,9 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <string>
+#include <charconv>
+#include <stdexcept>
+#include <cmath>
 namespace calc::core {
 
 	struct PlotFunctor::Impl {
@@ -267,9 +270,109 @@ namespace calc::core {
 		return f;
 	}
 
-}  // namespace calc::core
+	namespace {
 
-namespace calc::core {
+		// Format a double as a GLSL float literal: shortest round-trip (like the
+		// printer's formatNumber) but ALWAYS in float syntax. GLSL types a bare
+		// "2" as an int, so "pow(x, 2)" is a type error -- every literal needs a
+		// '.' or exponent. Guarantees one.
+		std::string glslFloat(double v) {
+			// GLSL has no NaN/inf literals; emit expressions that evaluate to
+			// them so the output is always valid source. (A compiled, simplified
+			// equation shouldn't contain these, but be total rather than emit
+			// something that won't compile.)
+			if (std::isnan(v)) return "(0.0/0.0)";
+			if (std::isinf(v)) return v < 0 ? "(-1.0/0.0)" : "(1.0/0.0)";
+
+			char buf[64];
+			const std::to_chars_result r = std::to_chars(buf, buf + sizeof(buf), v);
+			std::string s(buf, r.ptr);
+			if (s.find('.') == std::string::npos &&
+				s.find('e') == std::string::npos &&
+				s.find('E') == std::string::npos) {
+				s += ".0";
+			}
+			return s;
+		}
+
+		// Walk an RPN bytecode program, emitting a fully-parenthesized GLSL infix
+		// expression. The string analogue of the VM: pop operand strings, wrap,
+		// push. Full parenthesization means precedence never needs tracking.
+		// `axes[i]` is the caller-supplied GLSL accessor for axis slot i.
+		std::string glslFromBytecode(const Chunk& code,
+			const std::vector<std::string>& axes) {
+			std::vector<std::string> stack;
+			stack.reserve(code.size());
+			auto pop = [&] { std::string s = std::move(stack.back()); stack.pop_back(); return s; };
+
+			for (const Bytecode& in : code) {
+				switch (in.op) {
+				case VMop::Push: stack.push_back(glslFloat(in.value)); break;
+				case VMop::Bind: stack.push_back(axes[in.binding]); break;
+
+				case VMop::Add: { std::string b = pop(), a = pop(); stack.push_back("(" + a + "+" + b + ")"); break; }
+				case VMop::Sub: { std::string b = pop(), a = pop(); stack.push_back("(" + a + "-" + b + ")"); break; }
+				case VMop::Mul: { std::string b = pop(), a = pop(); stack.push_back("(" + a + "*" + b + ")"); break; }
+				case VMop::Div: { std::string b = pop(), a = pop(); stack.push_back("(" + a + "/" + b + ")"); break; }
+				case VMop::Pow: { std::string b = pop(), a = pop(); stack.push_back("pow(" + a + "," + b + ")"); break; }
+
+				case VMop::Uminus: { std::string a = pop(); stack.push_back("(-" + a + ")"); break; }
+
+				case VMop::Sin: { std::string a = pop(); stack.push_back("sin(" + a + ")"); break; }
+				case VMop::Cos: { std::string a = pop(); stack.push_back("cos(" + a + ")"); break; }
+				case VMop::Tan: { std::string a = pop(); stack.push_back("tan(" + a + ")"); break; }
+				case VMop::Asin: { std::string a = pop(); stack.push_back("asin(" + a + ")"); break; }
+				case VMop::Acos: { std::string a = pop(); stack.push_back("acos(" + a + ")"); break; }
+				case VMop::Atan: { std::string a = pop(); stack.push_back("atan(" + a + ")"); break; }
+				case VMop::Sinh: { std::string a = pop(); stack.push_back("sinh(" + a + ")"); break; }
+				case VMop::Cosh: { std::string a = pop(); stack.push_back("cosh(" + a + ")"); break; }
+				case VMop::Tanh: { std::string a = pop(); stack.push_back("tanh(" + a + ")"); break; }
+				case VMop::Asinh: { std::string a = pop(); stack.push_back("asinh(" + a + ")"); break; }
+				case VMop::Acosh: { std::string a = pop(); stack.push_back("acosh(" + a + ")"); break; }
+				case VMop::Atanh: { std::string a = pop(); stack.push_back("atanh(" + a + ")"); break; }
+				case VMop::Abs: { std::string a = pop(); stack.push_back("abs(" + a + ")"); break; }
+				case VMop::Sqrt: { std::string a = pop(); stack.push_back("sqrt(" + a + ")"); break; }
+
+							   // GLSL has no two-arg log: log(base, x) = log(x) / log(base).
+				case VMop::Log: {
+					std::string b = pop(), a = pop();
+					stack.push_back("(log(" + b + ")/log(" + a + "))"); break;
+				}
+							  // GLSL has no root: root(n, x) = pow(x, 1.0 / n).
+				case VMop::Root: {
+					std::string b = pop(), a = pop();
+					stack.push_back("pow(" + b + ",(1.0/" + a + "))"); break;
+				}
+
+				default: break;  // Invalid/unknown: skip. Well-formed bytecode never hits this.
+				}
+			}
+			return stack.empty() ? std::string("0.0") : std::move(stack.back());
+		}
+
+	}  // namespace
+
+	Result<std::string> CalculatorCore::compileGLSL(
+		const CalculatorCore::PlotRequest& req,
+		const std::vector<std::string>& axisIdentifiers) const {
+		// Precondition, not user input: the caller must supply one GLSL accessor
+		// per axis. Violating it is a programming error in the consumer, so we
+		// throw rather than return a DiagCode (which is reserved for end-user
+		// input errors). The C ABI catches this and reports it as the -1
+		// programming-error sentinel; a C++ caller gets the exception.
+		if (axisIdentifiers.size() != req.axisNames.size()) {
+			throw std::invalid_argument(
+				"compileGLSL: axisIdentifiers count (" +
+				std::to_string(axisIdentifiers.size()) +
+				") must equal axisNames count (" +
+				std::to_string(req.axisNames.size()) + ")");
+		}
+		// User-input errors (undefined equation, non-axis variable, ...) flow
+		// back as ordinary Result diagnostics from compileProgram.
+		Result<Program> programR = compileProgram(req);
+		if (!programR) return std::move(programR).error();
+		return glslFromBytecode(programR.value().code, axisIdentifiers);
+	}
 
 	// Pure string manipulation — no AST types involved.
 	Result<ParsedCommand> parseCommand(std::string_view input) {

@@ -415,6 +415,77 @@ extern "C" void calc_program_free(calc_program* program) {
 }
 
 /* ======================================================================== */
+/* GLSL                                                                     */
+/* ======================================================================== */
+
+extern "C" calc_glsl_result* calc_compile_glsl(const calc_core* core,
+	const char* equation_name,
+	const char* const* axis_names,
+	size_t axis_count,
+	const char* const* axis_identifiers,
+	size_t axis_identifier_count,
+	int clear_denominators) {
+	try {
+		if (core == nullptr || equation_name == nullptr ||
+			(axis_count > 0 && axis_names == nullptr) ||
+			(axis_identifier_count > 0 && axis_identifiers == nullptr)) {
+			return nullptr;
+		}
+
+		auto* out = static_cast<calc_glsl_result*>(
+			std::calloc(1, sizeof(calc_glsl_result)));
+		if (!out) return nullptr;
+
+		calc::core::CalculatorCore::PlotRequest req;
+		req.equationName = std::string(equation_name);
+		req.clearDenominators = (clear_denominators != 0);
+		req.axisNames.reserve(axis_count);
+		for (size_t i = 0; i < axis_count; ++i) {
+			if (axis_names[i] == nullptr) { std::free(out); return nullptr; }
+			req.axisNames.emplace_back(axis_names[i]);
+		}
+
+		std::vector<std::string> identifiers;
+		identifiers.reserve(axis_identifier_count);
+		for (size_t i = 0; i < axis_identifier_count; ++i) {
+			if (axis_identifiers[i] == nullptr) { std::free(out); return nullptr; }
+			identifiers.emplace_back(axis_identifiers[i]);
+		}
+
+		try {
+			auto r = toCore(core)->compileGLSL(req, identifiers);
+			if (!r) {
+				// User-input diagnostic: positive DiagCode, no text.
+				out->ok = 0;
+				out->diag_code = static_cast<int>(r.error().code);
+				return out;
+			}
+			out->ok = 1;
+			out->text = dupString(r.value());
+			return out;
+		}
+		catch (const std::invalid_argument& e) {
+			// Programming error (precondition violation in the caller). Report
+			// it as the -1 sentinel with the developer-facing message, rather
+			// than letting the throw cross the C boundary as a crash.
+			out->ok = 0;
+			out->diag_code = -1;
+			out->text = dupString(e.what());
+			return out;
+		}
+	}
+	catch (...) {
+		return nullptr;
+	}
+}
+
+extern "C" void calc_glsl_result_free(calc_glsl_result* result) {
+	if (!result) return;
+	std::free(const_cast<char*>(result->text));
+	std::free(result);
+}
+
+/* ======================================================================== */
 /* Generic deallocators                                                     */
 /* ======================================================================== */
 

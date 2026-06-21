@@ -112,6 +112,29 @@ namespace calc::core {
 		Result<Program> compileProgram(const PlotRequest& req) const;
 		Result<PlotFunctor> compilePlot(const PlotRequest& req) const;
 
+		// Emit a GLSL expression string for lhs - rhs of a stored equation,
+		// ready to splice into a fragment shader. This is the neutral bytecode
+		// (compileProgram) walked to one concrete target; any other target can
+		// be produced the same way from compileProgram's output.
+		//
+		// `axisIdentifiers` gives the GLSL accessor for each axis, in the same
+		// slot order as req.axisNames: axisIdentifiers[i] is substituted wherever
+		// axis i appears (e.g. {"p.x", "p.y"}). The caller owns this naming
+		// entirely; compileGLSL imposes no convention. Its size MUST equal
+		// req.axisNames.size() -- supplying the wrong count is a programming
+		// error (not user input), so it THROWS std::invalid_argument rather than
+		// returning a Diagnostic. (The C ABI converts that throw into its -1
+		// programming-error sentinel; see calc_compile_glsl.)
+		//
+		// Emits a bare, fully-parenthesized expression (e.g. "((p.y)-pow(p.x,2.0))"),
+		// NOT a complete shader: the version directive, uniforms, and how the
+		// result is used are the consumer's rendering decisions. Numeric literals
+		// are always emitted in float syntax (2.0, never 2). User-input errors
+		// (undefined equation, non-axis variable, ...) come back as a Diagnostic,
+		// exactly as compileProgram reports them.
+		Result<std::string> compileGLSL(const PlotRequest& req,
+			const std::vector<std::string>& axisIdentifiers) const;
+
 	private:
 		struct Impl;
 		std::unique_ptr<Impl> m_impl;   // pimpl: frontend never sees Ast.h guts
