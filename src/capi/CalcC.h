@@ -50,7 +50,7 @@
 // ABI stability. Structs below may grow, but only by appending fields at the
 // end; existing fields never move. Function signatures are frozen. This mirrors
 // the stable-integer discipline already used for DiagCode.
- 
+
 
 #ifndef CALC_C_H
 #define CALC_C_H
@@ -98,9 +98,9 @@ extern "C" {
         // --- success (ok == 1) --- 
         const char*  canonical;       // printed result, always set on success     
         const char*  assigned_name;   // the defined name, or NULL if not an
-                                      //  assignment                                
+        //  assignment                                
         int          has_value;       // 1 if `value` holds a number (the
-                                      //  expression reduced to a scalar)           
+        //  expression reduced to a scalar)           
         double       value;           // meaningful only when has_value == 1        
 
         // --- failure (ok == 0) --- 
@@ -272,9 +272,9 @@ extern "C" {
     } calc_bytecode;
 
     // A compiled program: the neutral form the engine emits, from which any target
-    // can be generated. This is the same compilation calc_compile_plot performs,
-    // exposed as inspectable data instead of an opaque functor -- the primitive
-    // that keeps the engine target-neutral, since a consumer can walk it to any
+    // is generated. It is the primitive that keeps the engine target-neutral --
+    // calc_compile_plot is itself built on it -- exposed as inspectable data
+    // instead of an opaque functor, so a consumer can walk it to any
     // representation it needs.
     //
     // On success (`ok` == 1): `code` holds `code_count` instructions; `stack_size`
@@ -330,7 +330,7 @@ extern "C" {
     typedef struct {
         int          ok;          // 1 = success, 0 = failure                       
         const char* text;        // GLSL on success; error message when diag_code
-                                  //  == -1; NULL when diag_code > 0                 
+        //  == -1; NULL when diag_code > 0                 
         int          diag_code;   // >0 DiagCode (user input); -1 programming error 
     } calc_glsl_result;
 
@@ -374,4 +374,4 @@ extern "C" {
 }  // extern "C" 
 #endif
 
-#endif // CALC_C_H 
+#endif // CALC_C_H

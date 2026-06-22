@@ -84,26 +84,29 @@ namespace calc::core {
 		std::optional<std::string> definitionOf(const std::string& name) const;
 		void clear();
 
-		// Build a thread-safe plotting functor for a stored equation. Does the
-		// eager work ONCE: substitute variables, simplify, optionally clear
+		// Plot compilation. `compileProgram` does the eager work ONCE for a
+		// stored equation: substitute variables, simplify, optionally clear
 		// denominators, compile to bytecode, intern each axis name to a slot
-		// (axisNames[i] -> slot i). After this returns, mutating the
-		// CalculatorCore cannot affect the functor.
+		// (axisNames[i] -> slot i). It returns the engine's neutral `Program`;
+		// `compilePlot` and `compileGLSL` are wrappers that walk that output to
+		// a concrete target, and a caller can walk it to its own target too.
 		//
 		// `axisNames` may hold any number of axes (2 for a plane curve, 3 for a
-		// surface, ...). They must be distinct, and every free variable in the
-		// equation must be one of them. Fails (Diagnostic) at build time, not
-		// sample time, on an undefined non-axis variable, a non-equation, etc.
+		// surface, ...), must be distinct, and must cover every free variable.
+		// All three fail with a Diagnostic at build time, not sample time, on an
+		// undefined non-axis variable, a non-equation, etc.
 		//
-		// The functor evaluates lhs - rhs. `clearDenominators` picks the form:
-		//   false (default): raw L - R. The true level set, but non-finite at
-		//     poles. For dense direct evaluation that handles inf/NaN itself
-		//     (e.g. shading an implicit surface on the GPU).
+		// `clearDenominators` picks the form of lhs - rhs:
+		//   false (default): raw L - R. True level set, but non-finite at poles.
+		//     For dense evaluation that handles inf/NaN itself (e.g. GPU shading).
 		//   true: multiplied through by every denominator, so it's finite
 		//     everywhere and asymptotes aren't spurious zero-crossings. Needed
-		//     for sparse sign-change sampling (the ASCII grapher). Changes
-		//     magnitude near poles, so it's not a drop-in for the raw form. See
+		//     for sparse sign-change sampling (the ASCII grapher); changes
+		//     magnitude near poles, so not a drop-in for the raw form. See
 		//     clearDenominators in Simplifier.h for edge cases (e.g. sin(x)/x).
+		//
+		// compilePlot returns an immutable, thread-safe PlotFunctor; once it
+		// returns, mutating the CalculatorCore cannot affect the functor.
 		struct PlotRequest {
 			std::string              equationName;        // a stored variable holding an equation
 			std::vector<std::string> axisNames;           // axisNames[i] -> slot i
@@ -112,26 +115,17 @@ namespace calc::core {
 		Result<Program> compileProgram(const PlotRequest& req) const;
 		Result<PlotFunctor> compilePlot(const PlotRequest& req) const;
 
-		// Emit a GLSL expression string for lhs - rhs of a stored equation,
-		// ready to splice into a fragment shader. This is the neutral bytecode
-		// (compileProgram) walked to one concrete target; any other target can
-		// be produced the same way from compileProgram's output.
+		// Walk a compiled Program to a GLSL expression string for lhs - rhs,
+		// ready to splice into a fragment shader.
 		//
-		// `axisIdentifiers` gives the GLSL accessor for each axis, in the same
-		// slot order as req.axisNames: axisIdentifiers[i] is substituted wherever
-		// axis i appears (e.g. {"p.x", "p.y"}). The caller owns this naming
-		// entirely; compileGLSL imposes no convention. Its size MUST equal
-		// req.axisNames.size() -- supplying the wrong count is a programming
-		// error (not user input), so it THROWS std::invalid_argument rather than
-		// returning a Diagnostic. (The C ABI converts that throw into its -1
-		// programming-error sentinel; see calc_compile_glsl.)
+		// `axisIdentifiers` gives the GLSL accessor for each axis in axisNames
+		// slot order (e.g. {"p.x", "p.y"}); the caller owns the naming. Its size
+		// MUST equal req.axisNames.size() -- a wrong count is a programming error,
+		// so it THROWS std::invalid_argument rather than returning a Diagnostic.
+		// (The C ABI maps that throw to its -1 sentinel; see calc_compile_glsl.)
 		//
 		// Emits a bare, fully-parenthesized expression (e.g. "((p.y)-pow(p.x,2.0))"),
-		// NOT a complete shader: the version directive, uniforms, and how the
-		// result is used are the consumer's rendering decisions. Numeric literals
-		// are always emitted in float syntax (2.0, never 2). User-input errors
-		// (undefined equation, non-axis variable, ...) come back as a Diagnostic,
-		// exactly as compileProgram reports them.
+		// NOT a complete shader; literals are always float syntax (2.0, never 2).
 		Result<std::string> compileGLSL(const PlotRequest& req,
 			const std::vector<std::string>& axisIdentifiers) const;
 
