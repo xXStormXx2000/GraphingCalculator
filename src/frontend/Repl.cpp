@@ -75,7 +75,7 @@ namespace calc {
 																				"#########################################\n"
 																				"\n"
 																				"Operators: +  -  *  /  ^  :\n"
-																				"Functions: sin cos tan asin acos atan sqrt abs log root\n"
+																				"Functions: sin cos tan asin acos atan sinh cosh tanh asinh acosh atanh sqrt abs log root\n"
 																				"Constants: pi tau e phi G c h hbar k_B N_A R q_e\n"
 																				"Commands:  /graph  /list  /clear  /help  /exit\n"
 																				"Type '/help(topic)' for details.\n"},
