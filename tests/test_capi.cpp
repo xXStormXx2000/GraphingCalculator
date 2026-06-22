@@ -14,7 +14,7 @@
 // UBSan watches the marshaling arithmetic. That sanitizer coverage of the
 // wrapper is the whole reason this lives in CI rather than as a one-off check.
 
-#include "calc_c.h"
+#include "CalcC.h"
 #include "test_framework.h"
 
 #include <cmath>
