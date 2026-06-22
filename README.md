@@ -69,9 +69,12 @@ engine can raise or lower it; `evaluateLine` takes the bound as a parameter.
 
 ### Functions and constants
 
-Functions: `sin cos tan asin acos atan sqrt abs log root`, where
-`log(base, x)` is the logarithm of `x` in the given base and
-`root(n, x)` is the n-th root of `x`.
+Functions: `sin cos tan asin acos atan sinh cosh tanh asinh acosh
+atanh sqrt abs log root`, where `log(base, x)` is the logarithm of `x`
+in the given base and `root(n, x)` is the n-th root of `x`. The
+trigonometric functions come with their inverses (`asin acos atan`)
+and full hyperbolic family (`sinh cosh tanh`) and hyperbolic inverses
+(`asinh acosh atanh`).
 
 Constants: `pi tau e phi G c h hbar k_B N_A R q_e`, with physical
 constants using CODATA 2018 / SI 2019 values. They are spelled bare (no
@@ -109,17 +112,23 @@ frontend, separated by a single public header.
                                 |  CalculatorCore.h  (the only seam)
                                 v
                           engine (calc::core)
-      Tokenizer -> Parser -> Simplifier -> bytecode -> PlotFunctor
-                                |
+                                                    -> PlotFunctor (CPU)
+   Tokenizer -> Parser -> Simplifier -> Program (bytecode)
+                                |                   -> GLSL (GPU)
                        Evaluation / Printing
 ```
+
+The plotting pipeline forks at the bytecode: `compileProgram` does the
+substitute/simplify/compile work once and returns a neutral `Program`,
+which is then walked to a concrete target — an in-process `PlotFunctor`
+(`compilePlot`) or a GLSL expression string (`compileGLSL`).
 
 ### Engine — `calc::core`
 
 Everything reachable through `CalculatorCore.h`. It owns the durable state
 (the user's variable definitions) and exposes a small surface:
-`evaluateLine`, `definedNames` / `definitionOf` / `clear`, `compilePlot`,
-and the free function `parseCommand`. It contains no I/O and no
+`evaluateLine`, `definedNames` / `definitionOf` / `clear`, `compilePlot`
+/ `compileProgram` / `compileGLSL`, and the free function `parseCommand`. It contains no I/O and no
 user-facing text — errors are reported as a `DiagCode` plus an optional
 detail payload. The engine is hidden behind a pimpl, so the frontend never
 sees the AST or any other internal type.
@@ -135,7 +144,7 @@ sees the AST or any other internal type.
 | `Simplifier.{h,cpp}` | constant folding, identities, cancellation, denominator clearing |
 | `Printer.{h,cpp}` | precedence-aware rendering back to a string |
 | `VMbytecode.{h,cpp}` | compiles an AST to stack-machine bytecode and runs it |
-| `CalculatorCore.{h,cpp}` | the public engine surface and command parser |
+| `CalculatorCore.{h,cpp}` | the public engine surface, plot compilation (`compileProgram`/`compilePlot`/`compileGLSL`), and command parser |
 
 ### Frontend — `calc`
 
@@ -362,13 +371,35 @@ with the simple node kinds.
 
 ## How graphing works
 
-`compilePlot` does all the expensive work once: it substitutes stored
+`compileProgram` does all the expensive work once: it substitutes stored
 variables, simplifies, optionally clears denominators, and compiles the
-equation to bytecode, returning a `PlotFunctor` — an immutable,
-thread-safe object that evaluates `lhs - rhs` of the equation at a given
-point. The renderer samples the functor across a grid and draws a cell
-wherever the sign changes between any pair of its corner samples, treating
-NaN as "no crossing".
+equation to a `Program` — the engine's neutral stack-machine bytecode,
+plus its stack size and dimension count. That `Program` is the single
+source from which any concrete target is walked, so adding a backend never
+touches the engine.
+
+`compilePlot` and `compileGLSL` are thin wrappers over that output.
+`compilePlot` walks the `Program` into an in-process `PlotFunctor` — an
+immutable, thread-safe object that evaluates `lhs - rhs` of the equation
+at a given point; the renderer samples the functor across a grid and draws
+a cell wherever the sign changes between any pair of its corner samples,
+treating NaN as "no crossing". `compileGLSL` walks the same `Program` into
+a GLSL string ready to splice into a fragment shader, for evaluating the
+level set per-pixel on the GPU instead of sampling a functor on the CPU. A
+consumer wanting some other target walks the `Program` itself the same way.
+
+All three take the same `PlotRequest` and report user-input errors —
+undefined equation, a free variable that isn't an axis, a non-equation —
+identically, as a `Diagnostic` at build time rather than at sample time.
+
+`compileGLSL` takes the axis accessors to substitute for each axis slot
+(e.g. `{"p.x", "p.y"}`, in `PlotRequest.axisNames` order) and returns a
+bare, fully-parenthesized expression such as `((p.y)-pow(p.x,2.0))` — not
+a complete shader, since the version directive, uniforms, and how the
+result is used are the consumer's rendering decisions. Numeric literals
+are always emitted in float syntax (`2.0`, never `2`). Supplying the wrong
+number of axis identifiers is a programming error, not user input, so it
+throws `std::invalid_argument` rather than returning a diagnostic.
 
 By default the functor evaluates the raw `lhs - rhs`, which is the true
 level set but goes to ±infinity or NaN at poles (`y = 1/x` is non-finite
