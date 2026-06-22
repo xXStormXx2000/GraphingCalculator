@@ -109,8 +109,8 @@ set_target_properties(calc_core PROPERTIES
 option(CALCULATOR_BUILD_C_API "Build the C ABI shared library" ON)
 if(CALCULATOR_BUILD_C_API)
     add_library(calc_c SHARED
-        src/capi/calc_c.h
-        src/capi/calc_c.cpp
+        src/capi/CalcC.h
+        src/capi/CalcC.cpp
     )
     add_library(Calc::c ALIAS calc_c)
     set_target_properties(calc_c PROPERTIES
@@ -141,7 +141,7 @@ if(CALCULATOR_BUILD_C_API)
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/capi/calc_c.h
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/capi/CalcC.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 endif()  # CALCULATOR_BUILD_C_API
