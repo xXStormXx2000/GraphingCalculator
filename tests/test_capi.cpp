@@ -230,6 +230,69 @@ TEST_CASE("capi: compile and sample a plot") {
 	REQUIRE(std::abs(voff) > 1e-9);
 }
 
+TEST_CASE("capi: eval_buffer matches per-point eval over many points") {
+	Core core(calc_core_new());
+	{ Eval a(calc_evaluate_line(core, "curve: y = x^2", 400)); }
+
+	const char* axes[] = { "x", "y" };
+	int diag = -1;
+	Plot p(calc_compile_plot(core, "curve", axes, 2, /*clear=*/1, &diag));
+	REQUIRE(p.h != nullptr);
+	REQUIRE(calc_plot_dimensions(p) == 2);
+
+	// Flat row-major buffer: 4 points, 2 coords each.
+	const double coords[] = {
+		2.0, 4.0,   // on the curve  -> ~0
+		2.0, 0.0,   // off           -> nonzero finite
+		-3.0, 9.0,  // on            -> ~0
+		1.0, 5.0,   // off           -> nonzero finite
+	};
+	const size_t n = 4;
+	double out[4] = { -1, -1, -1, -1 };
+
+	const int ok = calc_plot_eval_buffer(p, coords, 2, n, out);
+	REQUIRE(ok == 1);
+
+	// Every result must equal the single-point path bit-for-bit: the buffer
+	// loop is just calc_plot_eval with the scratch hoisted out.
+	for (size_t i = 0; i < n; ++i) {
+		const double one = calc_plot_eval(p, coords + i * 2, 2);
+		REQUIRE(out[i] == one);
+	}
+	REQUIRE_APPROX(out[0], 0.0, 1e-9);
+	REQUIRE_APPROX(out[2], 0.0, 1e-9);
+	REQUIRE(std::abs(out[1]) > 1e-9);
+	REQUIRE(std::abs(out[3]) > 1e-9);
+}
+
+TEST_CASE("capi: eval_buffer guards misuse and passes through NaN") {
+	Core core(calc_core_new());
+	{ Eval a(calc_evaluate_line(core, "curve: y = x^2", 400)); }
+
+	const char* axes[] = { "x", "y" };
+	int diag = -1;
+	Plot p(calc_compile_plot(core, "curve", axes, 2, /*clear=*/1, &diag));
+	REQUIRE(p.h != nullptr);
+
+	double out[2] = { 0, 0 };
+	const double coords[] = { 1.0, 2.0, 3.0, 4.0 };
+
+	// Wrong dimensions, NULL plot, and NULL buffers are whole-call failures.
+	REQUIRE(calc_plot_eval_buffer(p, coords, 3, 2, out) == 0);
+	REQUIRE(calc_plot_eval_buffer(nullptr, coords, 2, 2, out) == 0);
+	REQUIRE(calc_plot_eval_buffer(p, nullptr, 2, 2, out) == 0);
+	REQUIRE(calc_plot_eval_buffer(p, coords, 2, 2, nullptr) == 0);
+
+	// Zero points is a success no-op.
+	REQUIRE(calc_plot_eval_buffer(p, coords, 2, 0, out) == 1);
+
+	// A non-finite input coordinate yields NaN in-band, not a failure.
+	const double bad[] = { std::nan(""), 1.0 };
+	double oneOut[1] = { 0 };
+	REQUIRE(calc_plot_eval_buffer(p, bad, 2, 1, oneOut) == 1);
+	REQUIRE(std::isnan(oneOut[0]));
+}
+
 TEST_CASE("capi: plot compile failures report a code, not a crash") {
 	Core core(calc_core_new());
 	const char* axes[] = { "x", "y" };

@@ -44,8 +44,9 @@
 // Thread-safety. A `calc_core` is mutable (it owns the variable session), so
 // concurrent calls on one handle are NOT safe; use one handle per thread or
 // serialize access. A `calc_plot` is immutable once compiled and IS safe to
-// share and evaluate from many threads concurrently -- `calc_plot_eval`
-// allocates its own scratch per call and touches no shared mutable state.
+// share and evaluate from many threads concurrently -- `calc_plot_eval` and
+// `calc_plot_eval_buffer` each allocate their own scratch per call and touch no
+// shared mutable state.
 //
 // ABI stability. Structs below may grow, but only by appending fields at the
 // end; existing fields never move. Function signatures are frozen. This mirrors
@@ -213,6 +214,34 @@ extern "C" {
     CALC_C_API double calc_plot_eval(const calc_plot* plot,
         const double* coords,
         size_t coord_count);
+
+    // Evaluate the functor at many points in one call, the buffered counterpart
+    // to calc_plot_eval. This is the entry point for array workloads (e.g. a
+    // NumPy column of x-values): the FFI crossing and the scratch allocation
+    // happen ONCE here rather than once per point, which is the whole reason it
+    // exists -- a foreign caller looping calc_plot_eval pays both costs on every
+    // sample.
+    //
+    // `coords` is a flat, row-major buffer of n_points * dimensions doubles:
+    // point i occupies coords[i*dimensions .. i*dimensions + dimensions], each
+    // entry an axis value in slot order. `dimensions` MUST equal
+    // calc_plot_dimensions(plot). `out` is a caller-owned buffer of n_points
+    // doubles that receives one result per point, out[i] for point i. `coords`
+    // and `out` may not alias.
+    //
+    // Per-point domain errors are reported in-band as NaN in out[i], exactly as
+    // calc_plot_eval returns them; there is no per-point error path. Returns 1 on
+    // success and 0 only on a whole-call misuse (NULL plot/buffers, a dimensions
+    // mismatch, or allocation failure), in which case `out` is left untouched.
+    // n_points == 0 is a success no-op.
+    //
+    // Like calc_plot_eval it allocates its own scratch, so it is safe to call
+    // concurrently on a shared functor; each call uses independent scratch.
+    CALC_C_API int calc_plot_eval_buffer(const calc_plot* plot,
+        const double* coords,
+        size_t dimensions,
+        size_t n_points,
+        double* out);
 
     // Number of axes this functor expects in each calc_plot_eval call. 
     CALC_C_API size_t calc_plot_dimensions(const calc_plot* plot);

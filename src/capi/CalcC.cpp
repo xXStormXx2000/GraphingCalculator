@@ -10,7 +10,7 @@
 //
 // Keep logic out of here. Anything that looks like calculator behavior belongs
 // in the engine; this file should stay a mechanical shim.
- 
+
 
 #define CALC_C_BUILDING 1
 #include "CalcC.h"
@@ -127,7 +127,7 @@ extern "C" calc_eval_result* calc_evaluate_line(calc_core* core,
 			const auto& ev = r.value();
 			out->ok = 1;
 			out->canonical = dupString(ev.canonical);
-			if(out->canonical == nullptr) { calc_eval_result_free(out); return nullptr; }
+			if (out->canonical == nullptr) { calc_eval_result_free(out); return nullptr; }
 			out->assigned_name = ev.assignedName ? dupString(*ev.assignedName) : nullptr;
 			out->has_value = ev.value.has_value() ? 1 : 0;
 			out->value = ev.value.value_or(0.0);
@@ -257,7 +257,7 @@ extern "C" double calc_plot_eval(const calc_plot* plot,
 	// domain errors as NaN, never exceptions. We still guard the vector build
 	// (an allocation) so a bad_alloc becomes NaN rather than UB. 
 	try {
-		if (plot == nullptr || coord_count != calc_plot_dimensions(plot) || 
+		if (plot == nullptr || coord_count != calc_plot_dimensions(plot) ||
 			(coord_count > 0 && coords == nullptr)) {
 			return std::nan("");
 		}
@@ -266,6 +266,40 @@ extern "C" double calc_plot_eval(const calc_plot* plot,
 	}
 	catch (...) {
 		return std::nan("");
+	}
+}
+
+extern "C" int calc_plot_eval_buffer(const calc_plot* plot,
+	const double* coords,
+	size_t dimensions,
+	size_t n_points,
+	double* out) {
+	// Whole-call guards return 0 (misuse); per-point domain errors are NaN in
+	// out[i], never a failure. We allocate scratch and the coord vector ONCE
+	// and reuse them across every point -- that reuse, plus the single FFI
+	// crossing, is the entire reason this exists over a calc_plot_eval loop.
+	try {
+		if (plot == nullptr || dimensions != calc_plot_dimensions(plot) ||
+			(n_points > 0 && (coords == nullptr || out == nullptr))) {
+			return 0;
+		}
+		if (n_points == 0) return 1;  // nothing to do, not an error
+
+		const PlotFunctor& f = *toPlot(plot);
+		std::vector<double> scratch;
+		scratch.reserve(f.requiredStackSize());
+		std::vector<double> c(dimensions);
+		for (size_t i = 0; i < n_points; ++i) {
+			// Domain errors surface as NaN from the functor, so the hot loop
+			// has no error path; the only thing that can throw is the (already
+			// reserved) scratch growing, which the outer catch turns into 0.
+			c.assign(coords + i * dimensions, coords + (i + 1) * dimensions);
+			out[i] = f(c, scratch);
+		}
+		return 1;
+	}
+	catch (...) {
+		return 0;
 	}
 }
 
@@ -299,7 +333,7 @@ extern "C" calc_command_result* calc_parse_command(const char* input) {
 			const auto& cmd = r.value();
 			out->ok = 1;
 			out->name = dupString(cmd.name);
-			if(out->name == nullptr){ calc_command_result_free(out); return nullptr; }
+			if (out->name == nullptr) { calc_command_result_free(out); return nullptr; }
 			out->arg_count = cmd.args.size();
 			if (!cmd.args.empty()) {
 				auto* arr = static_cast<const char**>(
@@ -311,7 +345,7 @@ extern "C" calc_command_result* calc_parse_command(const char* input) {
 					if (arr[i] == nullptr) { ok = false; break; }
 				}
 				out->args = arr;
-				if(!ok) { calc_command_result_free(out); return nullptr; }
+				if (!ok) { calc_command_result_free(out); return nullptr; }
 			}
 		}
 		else {
@@ -468,7 +502,7 @@ extern "C" calc_glsl_result* calc_compile_glsl(const calc_core* core,
 			}
 			out->ok = 1;
 			out->text = dupString(r.value());
-			if(out->text == nullptr) { calc_glsl_result_free(out); return nullptr; }
+			if (out->text == nullptr) { calc_glsl_result_free(out); return nullptr; }
 			return out;
 		}
 		catch (const std::invalid_argument& e) {
