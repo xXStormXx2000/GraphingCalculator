@@ -30,135 +30,139 @@ namespace calc::core {
 	double execute(const Chunk& bytecode,
 		const std::vector<double>& bindings,
 		std::vector<double>& stack) {
-		stack.clear();
+		// Size (not just reserve) so data() is valid for the whole depth.
+		// No reallocation when capacity already suffices, which is the common
+		// case since callers reserve requiredStackSize() once and reuse.
+		if (stack.size() < bytecode.size())
+			stack.resize(bytecode.size());
+
+		double* const base = stack.data();
+		double* sp = base;   // points one past the current top
 		for (const Bytecode& instruction : bytecode) {
 			switch (instruction.op) {
 			case VMop::Push: {
-				stack.push_back(instruction.value);
+				*sp++ = instruction.value;
 				break;
 			}
 			case VMop::Bind: {
-				stack.push_back(bindings[instruction.binding]);
+				*sp++ = bindings[instruction.binding];
 				break;
 			}
 			case VMop::Add: {
-				double b = stack.back(); stack.pop_back();
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(a + b);
+				assert(sp - base >= 2 && "stack underflow");
+				sp[-2] = sp[-2] + sp[-1]; --sp;
 				break;
 			}
 			case VMop::Sub: {
-				double b = stack.back(); stack.pop_back();
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(a - b);
+				assert(sp - base >= 2 && "stack underflow");
+				sp[-2] = sp[-2] - sp[-1]; --sp;
 				break;
 			}
 			case VMop::Mul: {
-				double b = stack.back(); stack.pop_back();
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(a * b);
+				assert(sp - base >= 2 && "stack underflow");
+				sp[-2] = sp[-2] * sp[-1]; --sp;
 				break;
 			}
 			case VMop::Div: {
-				double b = stack.back(); stack.pop_back();
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(a / b);
+				assert(sp - base >= 2 && "stack underflow");
+				sp[-2] = sp[-2] / sp[-1]; --sp;
 				break;
 			}
 			case VMop::Pow: {
-				double b = stack.back(); stack.pop_back();
-				double a = stack.back(); stack.pop_back();
+				assert(sp - base >= 2 && "stack underflow");
+				double b = sp[-1], a = sp[-2];
 				if (b == std::floor(b) && std::abs(b) < 512)
-					stack.push_back(ipow(a, (int)b));
+					sp[-2] = ipow(a, (int)b);
 				else
-					stack.push_back(std::pow(a, b));
+					sp[-2] = std::pow(a, b);
+				--sp;
 				break;
 			}
 			case VMop::Uminus: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(-a);
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = -sp[-1];
 				break;
 			}
 			case VMop::Sin: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::sin(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::sin(sp[-1]);
 				break;
 			}
 			case VMop::Cos: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::cos(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::cos(sp[-1]);
 				break;
 			}
 			case VMop::Tan: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::tan(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::tan(sp[-1]);
 				break;
 			}
 			case VMop::Asin: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::asin(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::asin(sp[-1]);
 				break;
 			}
 			case VMop::Acos: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::acos(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::acos(sp[-1]);
 				break;
 			}
 			case VMop::Atan: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::atan(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::atan(sp[-1]);
 				break;
 			}
 			case VMop::Sinh: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::sinh(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::sinh(sp[-1]);
 				break;
 			}
 			case VMop::Cosh: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::cosh(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::cosh(sp[-1]);
 				break;
 			}
 			case VMop::Tanh: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::tanh(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::tanh(sp[-1]);
 				break;
 			}
 			case VMop::Asinh: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::asinh(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::asinh(sp[-1]);
 				break;
 			}
 			case VMop::Acosh: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::acosh(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::acosh(sp[-1]);
 				break;
 			}
 			case VMop::Atanh: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::atanh(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::atanh(sp[-1]);
 				break;
 			}
 			case VMop::Abs: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::abs(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::abs(sp[-1]);
 				break;
 			}
 			case VMop::Log: {
-				double b = stack.back(); stack.pop_back();
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::log(b) / std::log(a));
+				assert(sp - base >= 2 && "stack underflow");
+				double b = sp[-1], a = sp[-2];
+				sp[-2] = std::log(b) / std::log(a); --sp;
 				break;
 			}
 			case VMop::Sqrt: {
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::sqrt(a));
+				assert(sp - base >= 1 && "stack underflow");
+				sp[-1] = std::sqrt(sp[-1]);
 				break;
 			}
 			case VMop::Root: {
-				double b = stack.back(); stack.pop_back();
-				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::pow(b, 1 / a));
+				assert(sp - base >= 2 && "stack underflow");
+				double b = sp[-1], a = sp[-2];
+				sp[-2] = std::pow(b, 1 / a); --sp;
 				break;
 			}
 			default:
@@ -166,7 +170,7 @@ namespace calc::core {
 				break;
 			}
 		}
-		return stack.empty() ? 0 : stack.back();
+		return sp == base ? 0 : sp[-1];
 	}
 
 	// AST to Bytecode
