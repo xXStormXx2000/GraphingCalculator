@@ -1,4 +1,3 @@
-
 // VMbytecode.cpp — stack-machine compiler and interpreter.
 //
 // Precondition: the bytecode passed to execute() is assumed to come from
@@ -13,6 +12,19 @@
 #include <cassert>
 
 namespace calc::core {
+
+	// Integer power
+	static inline double ipow(double a, int n) {
+		if (n == 0) return 1.0;
+		unsigned m = n < 0 ? -static_cast<unsigned>(n) : static_cast<unsigned>(n);
+		double r = 1.0, base = a;
+		while (m) {
+			if (m & 1) r *= base;
+			m >>= 1;
+			if (m) base *= base;
+		}
+		return n < 0 ? 1.0 / r : r;
+	}
 
 	// Function to execute the bytecode
 	double execute(const Chunk& bytecode,
@@ -56,7 +68,10 @@ namespace calc::core {
 			case VMop::Pow: {
 				double b = stack.back(); stack.pop_back();
 				double a = stack.back(); stack.pop_back();
-				stack.push_back(std::pow(a, b));
+				if (b == std::floor(b) && std::abs(b) < 512)
+					stack.push_back(ipow(a, (int)b));
+				else
+					stack.push_back(std::pow(a, b));
 				break;
 			}
 			case VMop::Uminus: {
