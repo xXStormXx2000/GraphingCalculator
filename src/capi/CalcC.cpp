@@ -13,7 +13,7 @@
  
 
 #define CALC_C_BUILDING 1
-#include "calc_c.h"
+#include "CalcC.h"
 
 #include "CalculatorCore.h"   // the entire public C++ surface we wrap 
 
