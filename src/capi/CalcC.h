@@ -1,56 +1,33 @@
-// calc_c.h - C ABI for the calc::core calculation engine.
+// CalcC.h - C ABI for the calc::core engine.
 //
-// This is the FFI seam. It exposes the engine (CalculatorCore.h) as plain C
-// functions so any language with a C foreign-function interface -- Python,
-// Rust, Go, C#, Node, Julia -- can drive it without touching C++ name
-// mangling, exceptions, or ABI-unstable types.
+// A thin FFI wrapper exposing the engine (CalculatorCore.h) as plain C, so any
+// language with a C FFI can drive it without C++ mangling, exceptions, or
+// ABI-unstable types. Every function forwards to the C++ core, which is
+// unchanged and unaware of this layer. Most of the surface drives the engine;
+// calc_compile_program and calc_compile_glsl are lower-level (see those sections).
 //
-// It is a thin wrapper, not a reimplementation: every function here forwards
-// to the C++ engine and marshals the result into C-owned memory. The C++ core
-// is unchanged and unaware this layer exists.
+// --- Conventions (apply everywhere) --------------------------------------
 //
-// Most of the surface drives the engine (evaluate, define/list/clear, compile a
-// plot functor, parse a command). Two pieces are lower-level: calc_compile_program
-// hands back the neutral bytecode the engine compiles to, and calc_compile_glsl
-// walks that bytecode to one concrete target (a GLSL fragment-shader expression).
-// A consumer in any language can drive either rather than going through the
-// opaque plot functor. See the bytecode and GLSL sections.
+// Handles (`calc_core`, `calc_plot`) are opaque: hold pointers, never dereference.
 //
-// --- Conventions (read once, they apply everywhere) ----------------------
+// Ownership: any pointer returned is owned by this library; release it with the
+// matching `*_free`, never the caller's free(). `*_free(NULL)` is a safe no-op.
 //
-// Handles are opaque. `calc_core` and `calc_plot` are incomplete types; a C
-// caller only ever holds pointers to them and must not dereference them.
+// Strings are NUL-terminated UTF-8 and may be multibyte; decode accordingly.
 //
-// Ownership is explicit and paired. Any pointer this library returns is owned
-// by this library's allocator and must be released with the matching
-// `*_free` function -- never with the caller's free(). The rule is: whoever
-// allocates, frees. Calling a `*_free` on NULL is always safe and is a no-op.
+// Diagnostics are integer codes, never text: a failed result carries a
+// `diag_code` matching the DiagCode enum (stable values; map via
+// data/Errors.txt), and `detail` carries the runtime payload (variable name,
+// offending character) or NULL.
 //
-// Strings are NUL-terminated UTF-8. The engine's canonical output and the
-// diagnostic detail payloads may contain multibyte UTF-8 (the data files are
-// UTF-8); decode accordingly on the far side.
+// Exceptions never cross the boundary: every entry point catches and reports a
+// NULL return or internal-error code instead.
 //
-// Diagnostics are integer codes, never text. A failed result carries a
-// `diag_code` whose value matches the DiagCode enum in DiagCode.h exactly (the
-// values there are explicit and stable for this reason). Map it to a message
-// with your own table or with the engine's data/Errors.txt. `detail` carries
-// the runtime payload (a variable name, the offending character, ...) for the
-// codes that interpolate one, and is NULL otherwise.
+// Thread-safety: a `calc_core` is mutable -- one handle per thread or serialize.
+// A `calc_plot` is immutable once compiled and safe to share across threads;
+// calc_plot_eval and calc_plot_eval_buffer use per-call scratch.
 //
-// Exceptions never cross this boundary. Every entry point has a catch-all; an
-// unexpected C++ exception (e.g. std::bad_alloc) is reported as a NULL return
-// or an internal-error code, never propagated into the C caller's frame.
-//
-// Thread-safety. A `calc_core` is mutable (it owns the variable session), so
-// concurrent calls on one handle are NOT safe; use one handle per thread or
-// serialize access. A `calc_plot` is immutable once compiled and IS safe to
-// share and evaluate from many threads concurrently -- `calc_plot_eval` and
-// `calc_plot_eval_buffer` each allocate their own scratch per call and touch no
-// shared mutable state.
-//
-// ABI stability. Structs below may grow, but only by appending fields at the
-// end; existing fields never move. Function signatures are frozen. This mirrors
-// the stable-integer discipline already used for DiagCode.
+// ABI stability: structs grow only by appending fields; signatures are frozen.
 
 
 #ifndef CALC_C_H
